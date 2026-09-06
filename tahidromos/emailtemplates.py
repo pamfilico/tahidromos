@@ -25,6 +25,19 @@ from pathlib import Path
 from typing import Any
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+def logo_data_uri() -> str:
+    """The postman, inlined.
+
+    Emails have to carry their own images: an external URL will not load in
+    the browser's PNG capture, and would not survive being saved as .eml and
+    opened somewhere else. 13 KB of base64 is a fair price for a mark that
+    always renders.
+    """
+    inline = STATIC_DIR / "logo-inline.txt"
+    return inline.read_text().strip() if inline.is_file() else ""
 
 EACH_BLOCK = re.compile(r"\{\{#each\s+([a-zA-Z0-9_]+)\s*\}\}(.*?)\{\{/each\}\}", re.DOTALL)
 VARIABLE = re.compile(r"\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}")
@@ -92,7 +105,8 @@ class Template:
     source: str = "handwritten"
 
     def render(self, context: dict | None = None, domain: str = "tahidromos.test") -> dict:
-        merged = _expand_defaults({"domain": domain, **self.defaults, **(context or {})})
+        merged = _expand_defaults({"domain": domain, "logo": logo_data_uri(),
+                                   **self.defaults, **(context or {})})
         html_path = TEMPLATE_DIR / self.html_file
         html = render_string(html_path.read_text(encoding="utf-8"), merged, escape=True)
 

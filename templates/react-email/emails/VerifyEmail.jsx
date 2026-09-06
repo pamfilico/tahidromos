@@ -1,6 +1,7 @@
 import {
-  Body, Button, Container, Head, Html, Preview, Section, Text, Heading,
+  Body, Button, Container, Head, Html, Img, Preview, Section, Text, Heading,
 } from "@react-email/components";
+import { LOGO, markStyle } from "./brand.js";
 import * as React from "react";
 
 /** Address confirmation — the other half of the sign-up flow. */
@@ -12,7 +13,10 @@ export default function VerifyEmail() {
       <Body style={body}>
         <Container style={card}>
           <Section style={pad}>
-            <Text style={brand}>📮 {"{{ product }}"}</Text>
+            <Text style={brand}>
+              <Img src={LOGO} alt="" width="26" height="26" style={markStyle} />
+              {"{{ product }}"}
+            </Text>
             <Heading style={heading}>Confirm your address</Heading>
             <Text style={paragraph}>
               One click and {"{{ email }}"} is verified. The link is good for{" "}

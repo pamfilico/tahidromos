@@ -66,6 +66,8 @@ LOUD_PHRASES = [
     (r"\bunclaimed\s+funds?\b", "advance-fee pattern"),
 ]
 
+DATA_URI = re.compile(r"data:[a-z]+/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+", re.IGNORECASE)
+
 HIDDEN_TEXT = re.compile(
     r"font-size\s*:\s*0(?:\.0+)?(px|pt|em)?|display\s*:\s*none|visibility\s*:\s*hidden",
     re.IGNORECASE)
@@ -170,7 +172,10 @@ def score_message(raw: bytes) -> dict:
         hit("HTML_ONLY", 1.0, "No plain-text alternative")
 
     if html and text.strip():
-        ratio = len(html) / max(len(text), 1)
+        # An inlined image is not HTML bulk. Templates that embed their logo
+        # as a data URI would otherwise be punished for travelling well.
+        markup = DATA_URI.sub("", html)
+        ratio = len(markup) / max(len(text), 1)
         # A well-built marketing template is legitimately 20-40x its text part,
         # so only a wild imbalance is worth a point.
         if ratio > 45:

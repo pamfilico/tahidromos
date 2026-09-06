@@ -182,6 +182,8 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .empty{display:grid;place-items:center;height:100%;text-align:center;color:var(--dim);padding:40px}
 .empty>div{max-width:360px}
 .empty .big{font-size:42px;margin-bottom:12px;opacity:.5}
+.empty img.big{width:76px;height:76px;border-radius:50%;opacity:.45;
+  filter:grayscale(.35);margin:0 auto 14px;display:block}
 .empty h3{margin:0 0 6px;font-size:14px;color:var(--muted);font-weight:600}
 .empty p{margin:0;font-size:12.5px;line-height:1.7}
 .empty code{font-family:var(--mono);font-size:11.5px;background:var(--panel);padding:1px 5px;
@@ -300,7 +302,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 
   <section class="reader" id="reader">
     <div class="empty"><div>
-      <div class="big">✉️</div>
+      <img class="big" src="/logo.png" alt="">
       <h3>Nothing selected</h3>
       <p>Pick a mailbox, then a message. Mail <code>echo@tahidromos.test</code>
          and it will reply — then reply to that, and it will reply again.</p>
@@ -469,7 +471,7 @@ function messageRow(message){
 function renderMessages(){
   const list = state.messages;
   if(!list.length){
-    $("msgs").innerHTML = `<div class="empty"><div><div class="big">🕊</div>
+    $("msgs").innerHTML = `<div class="empty"><div><img class="big" src="/logo.png" alt="">
       <h3>Empty mailbox</h3><p>Nothing has been delivered to
       <code>${esc(state.user)}</code> yet.</p></div></div>`;
     return;
@@ -887,7 +889,9 @@ $("purge").onclick = async () => {
   const result = await api(`/messages/${encodeURIComponent(state.user)}`, {method:"DELETE"});
   toast(`Deleted ${result.deleted} message${result.deleted === 1 ? "" : "s"}`);
   state.uid = null;
-  $("reader").innerHTML = '<div class="empty"><div><div class="big">✉️</div><h3>Mailbox emptied</h3></div></div>';
+  $("reader").innerHTML =
+    '<div class="empty"><div><img class="big" src="/logo.png" alt="">' +
+    '<h3>Mailbox emptied</h3></div></div>';
   loadMessages(); loadOverview();
 };
 $("theme").onclick = () => {

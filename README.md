@@ -28,6 +28,90 @@ no Dovecot, no third-party mail server underneath — just one image you run.
 
 ![The tahidromos inbox](docs/screenshots/inbox.png)
 
+## Why this exists
+
+This started as a complaint and turned into a competitive study, which is
+[checked into the repo](research1.md) with a running annotation of what got
+built from it. The short version:
+
+**The gap is real and old.** MailHog issue #111, *"Ability to reply to emails
+sent by application server"*, was opened on 8 September 2016 and is still
+open:
+
+> Users can interact with the application by sending emails to it. You can
+> also just reply directly to an email notification and it will update the
+> thread… I'd like to be able to test this kind of functionality using the UI
+> in Mailhog.
+
+MailHog even started an IMAP server to answer it and abandoned it at three
+stars. Nobody in the category has closed that gap since. Mailpit, MailCatcher,
+Maildev and smtp4dev are all outbound-capture only; smtp4dev added IMAP
+*reading* but you still cannot reply and have your app receive it.
+
+**The incumbent is dead.** MailHog's last release was v1.0.1 in August 2020.
+Mailpit's own README says it was *"inspired by MailHog which is no longer
+maintained and hasn't seen active development or security updates for a few
+years now."* Mailpit is the deserved successor — and it is excellent at being
+a sink. That niche is solved, so tahidromos does not compete there.
+
+**Paying for an inbox adds up.** As of 6 September 2026: Mailosaur has no
+permanent free tier and starts at $20/month; MailSlurp's free tier cannot send
+outside MailSlurp and caps at 500 inbound a month, with Pro around $50;
+Mailtrap's testing sandbox gives you 50 emails a month free, $17/month after.
+Fine for a funded team, irritating for a side project and awkward for open
+source CI. (Vendor pricing moves — check before quoting it.)
+
+**Flaky email tests have one shape.** From MailSlurp's own CI guide:
+
+> Most flaky email tests fail for one of four reasons: multiple test runs send
+> to the same mailbox… the test sleeps for 5 or 10 seconds and assumes the
+> email will arrive in time. The suite asks for the latest unread message
+> instead of the message that belongs to this exact test run.
+
+Both causes are structural, so both got structural answers here: `POST
+/inboxes` gives every test its own mailbox, and `POST /wait` blocks on the
+server until a message matching your filters arrives. Nothing sleeps, and no
+two tests share an inbox.
+
+**Testing inbound mail is worse.** From `django-inbound-email`:
+
+> it's really very hard to test inbound emails without having real data, and
+> that requires a public endpoint that you can use to hook up your preferred
+> email provider's webhooks.
+
+Delivery here is local, so there is no tunnel: set `INBOUND_WEBHOOK_URL` and
+tahidromos POSTs each delivery at your app in Postmark, SendGrid or Mailgun
+shape.
+
+## How it was built
+
+The first version wrapped an existing mail server and bolted a UI on. It
+worked, and it was wrong: a stack of four containers, a webmail client with
+its own login, and a catch-all service doing the one job the product is
+supposed to own. It got thrown away.
+
+What replaced it is written from scratch on the Python standard library — an
+SMTP server, an IMAP4rev1 server, a message store, a router, auto-responders,
+a spam scorer and a template renderer. Five runtime dependencies, all for the
+HTTP layer and TLS certificates; none of them touch mail.
+
+Two rules held the whole way:
+
+**The quick start is one `docker run` with no flags.** Everything — templates,
+scenarios, spam scoring, disposable inboxes, device previews, forwarding —
+works with no configuration at all. Only two features need a variable, because
+they must know about something outside the container, and both say so when
+they are off. CI enforces this: a job pulls the published image by digest,
+starts it bare, and fails if any of it needs setting up.
+
+**The tests drive the protocols, not the code.** The suite talks to the server
+over plain `smtplib`, `imaplib` and HTTP, so it proves the *server* works
+rather than that the helpers agree with themselves. That is how the awkward
+bugs surfaced: `SEARCH UNSEEN` returning wrong answers, a CRLF mix-up that
+silently rewrote Message-IDs, templates that looked fine at 1440px and clipped
+at 393px, a spam scorer that flagged its own templates, and a `color-scheme`
+declaration that turned an OTP white in a dark-mode client.
+
 ## Quick start
 
 ```sh
@@ -591,6 +675,21 @@ Self-signed certificates, plaintext authentication, no spam filtering, no
 SPF/DKIM/DMARC checks, and an open relay on port 25 inside the container
 network. Every one of those is a deliberate choice to make development
 frictionless, and a reason never to expose this to the internet.
+
+## The research
+
+[`research1.md`](research1.md) is the competitive study this was built from,
+annotated in place with what happened to each recommendation — struck through
+where done, marked `[OPEN]` where not, and `[CORRECTION]` where the document
+described an earlier version of this project that no longer exists.
+
+Of its twelve recommendations, ten are shipped. Two are open: a Testcontainers
+module, and a normalise-and-diff snapshot helper. Its distribution plan is
+entirely untouched.
+
+Its own caveats are worth repeating: the SaaS pricing it quotes moves, and the
+star counts and funding figures come from tech press rather than primary
+sources. Verify before quoting any of it in public.
 
 ## Name
 

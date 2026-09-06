@@ -54,7 +54,10 @@ const slug = (file) =>
       .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
       .toLowerCase();
 
-const files = (await readdir(emailsDir)).filter((f) => /\.[jt]sx?$/.test(f)).sort();
+// Components are PascalCase; anything lowercase is a shared helper.
+const files = (await readdir(emailsDir))
+  .filter((f) => /^[A-Z].*\.[jt]sx?$/.test(f))
+  .sort();
 if (files.length === 0) {
   console.error("no email components in emails/");
   process.exit(1);

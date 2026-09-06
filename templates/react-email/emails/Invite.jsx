@@ -1,7 +1,8 @@
 import {
-  Body, Button, Container, Head, Hr, Html, Preview,
+  Body, Button, Container, Head, Hr, Html, Img, Preview,
   Section, Text, Heading, Link, Row, Column,
 } from "@react-email/components";
+import { LOGO, markStyle } from "./brand.js";
 import * as React from "react";
 
 /**
@@ -20,7 +21,10 @@ export default function Invite() {
       <Body style={body}>
         <Container style={card}>
           <Section style={pad}>
-            <Text style={brand}>📮 {"{{ product }}"}</Text>
+            <Text style={brand}>
+              <Img src={LOGO} alt="" width="26" height="26" style={markStyle} />
+              {"{{ product }}"}
+            </Text>
           </Section>
 
           <Section style={pad}>
