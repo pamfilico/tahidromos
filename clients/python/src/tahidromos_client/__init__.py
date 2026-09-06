@@ -124,6 +124,21 @@ class Message:
         return bool(self.raw_data.get("seen"))
 
     @property
+    def attachments(self) -> list[dict]:
+        """Filename, content type and size for each attached part."""
+        return self.raw_data.get("attachments", [])
+
+    @property
+    def forwarded_from(self) -> str | None:
+        """The Message-ID this was forwarded from, if it is a forward."""
+        return self.raw_data.get("forwarded_from")
+
+    @property
+    def forward_count(self) -> int:
+        """How many times this has been forwarded."""
+        return self.raw_data.get("forward_count", 0)
+
+    @property
     def raw(self) -> str:
         return self.raw_data.get("raw", "")
 
@@ -191,6 +206,20 @@ class Inbox:
         return self.client._ok(self.client._request("POST", "/reply", json={
             "user": self.address, "uid": uid, "text": text,
             "reply_all": reply_all, **extra}))
+
+    def forward(self, message: Message | str, to: str | list[str], note: str = "",
+                mode: str = "inline", **extra) -> dict:
+        """Forward a message on.
+
+        The `Fwd:` prefix, the forwarded-header block and the attachments are
+        handled by the server. `mode="attachment"` attaches the original as
+        message/rfc822 instead of quoting it.
+        """
+        uid = message.uid if isinstance(message, Message) else message
+        return self.client._ok(self.client._request("POST", "/forward", json={
+            "user": self.address, "uid": uid,
+            "to": to if isinstance(to, list) else [str(to)],
+            "note": note, "mode": mode, **extra}))
 
     # -- housekeeping ----------------------------------------------------
 
@@ -334,6 +363,10 @@ class Tahidromos:
 
     def scenarios(self) -> list[dict]:
         return self._get("/scenarios")["scenarios"]
+
+    def forward_rules(self) -> dict:
+        """Mailboxes that forward everything on, from the app config."""
+        return self._get("/forwards")
 
     def parse(self, text: str = "", html: str = "") -> dict:
         """Strip quotes and signatures and pull out links and codes."""

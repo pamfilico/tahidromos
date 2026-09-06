@@ -54,6 +54,22 @@ class ReplyRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ForwardRequest(BaseModel):
+    """Forward a message to someone else."""
+    user: str = Field(..., description="Mailbox the original is in")
+    to: list[str] | str
+    uid: str | None = None
+    message_id: str | None = None
+    note: str = Field("", description="Text placed above the forwarded block")
+    cc: list[str] | str | None = None
+    sender: str | None = Field(None, alias="from")
+    mailbox: str = "INBOX"
+    mode: str = Field("inline", pattern="^(inline|attachment)$")
+    keep_thread: bool = Field(True, description="Carry References so a reply threads")
+    headers: dict[str, str] = Field(default_factory=dict)
+    model_config = {"populate_by_name": True}
+
+
 class WaitRequest(BaseModel):
     """Block until a message matching every supplied filter arrives.
 
@@ -186,6 +202,14 @@ def create_app(store: Store, router: Router, config: Config, started_at: float,
         found["date"] = str(parsed.get("Date", ""))
         found["text"] = msg.plain_body(parsed)
         found["html"] = msg.html_body(parsed)
+        found["attachments"] = [
+            {"filename": part.get_filename(),
+             "content_type": part.get_content_type(),
+             "size": len(part.get_payload(decode=True) or b"")}
+            for part in parsed.iter_attachments()
+        ]
+        found["forwarded_from"] = str(parsed.get(msg.FORWARDED_ID_HEADER, "")).strip() or None
+        found["forward_count"] = msg.forward_count(parsed)
         found.update(extract.summarize(found["text"], found["html"] or ""))
         return found
 
@@ -499,22 +523,28 @@ def create_app(store: Store, router: Router, config: Config, started_at: float,
                 "cc": [config.qualify(a) for a in cc],
                 "subject": request.subject, "accounts_created": created}
 
-    @app.post("/reply", status_code=201, tags=["write"])
-    async def reply(request: ReplyRequest) -> dict[str, Any]:
-        address = resolve(request.user)
-        found = None
-        if request.uid:
-            found = store.message(address, int(request.uid), request.mailbox)
-        elif request.message_id:
-            wanted = bracket(request.message_id)
-            for candidate in store.summaries(address, request.mailbox):
+    def _locate(address: str, mailbox: str, uid: str | None,
+                message_id: str | None) -> dict:
+        """Find one message by uid or Message-ID, or raise."""
+        if uid:
+            found = store.message(address, int(uid), mailbox)
+        elif message_id:
+            wanted = bracket(message_id)
+            found = None
+            for candidate in store.summaries(address, mailbox):
                 if candidate["message_id"] == wanted:
-                    found = store.message(address, int(candidate["uid"]), request.mailbox)
+                    found = store.message(address, int(candidate["uid"]), mailbox)
                     break
         else:
             raise HTTPException(status_code=422, detail="provide either uid or message_id")
         if found is None:
             raise HTTPException(status_code=404, detail="original message not found")
+        return found
+
+    @app.post("/reply", status_code=201, tags=["write"])
+    async def reply(request: ReplyRequest) -> dict[str, Any]:
+        address = resolve(request.user)
+        found = _locate(address, request.mailbox, request.uid, request.message_id)
 
         parent = msg.parse(found["raw"])
         sender = config.qualify(request.sender) if request.sender else address
@@ -532,6 +562,61 @@ def create_app(store: Store, router: Router, config: Config, started_at: float,
                 "depth": int(str(built[msg.DEPTH_HEADER])), "from": sender,
                 "to": str(built["To"]), "subject": str(built["Subject"]),
                 "replied_to_uid": found["uid"]}
+
+    @app.post("/forward", status_code=201, tags=["write"])
+    async def forward(request: ForwardRequest) -> dict[str, Any]:
+        """Forward a message, the way a mail client does.
+
+        The forwarded-header block, the `Fwd:` prefix and the attachments are
+        handled here. A forward is not a reply, so no `In-Reply-To` is set,
+        but `References` is carried by default so that a reply to the forward
+        still threads.
+        """
+        address = resolve(request.user)
+        found = _locate(address, request.mailbox, request.uid, request.message_id)
+
+        to = [request.to] if isinstance(request.to, str) else list(request.to)
+        cc = [request.cc] if isinstance(request.cc, str) else list(request.cc or [])
+        sender = config.qualify(request.sender) if request.sender else address
+
+        parent = msg.parse(found["raw"])
+        built = msg.build_forward(
+            parent, sender=sender,
+            to=[config.qualify(a) for a in to],
+            cc=[config.qualify(a) for a in cc] or None,
+            note=request.note, mode=request.mode, keep_thread=request.keep_thread,
+            headers=request.headers, domain=sender.split("@")[1],
+        )
+        created = ensure([sender, *msg.recipients(built)])
+        message_id = await send_message(built, sender)
+
+        return {
+            "message_id": message_id,
+            "forwarded_message_id": str(built[msg.FORWARDED_ID_HEADER]),
+            "from": sender,
+            "to": [config.qualify(a) for a in to],
+            "cc": [config.qualify(a) for a in cc],
+            "subject": str(built["Subject"]),
+            "mode": request.mode,
+            "references": str(built["References"] or "").split(),
+            "forward_count": int(str(built[msg.FORWARD_COUNT_HEADER])),
+            "attachments": [part.get_filename() for part in built.iter_attachments()],
+            "accounts_created": created,
+        }
+
+    @app.get("/forwards", tags=["write"])
+    def forward_rules() -> dict[str, Any]:
+        """Mailboxes that forward everything on, from the app config."""
+        rules = []
+        for app_config in config.apps:
+            for box in app_config.mailboxes:
+                if box.forward_to:
+                    rules.append({"mailbox": box.address, "app": app_config.name,
+                                  "forward_to": [config.qualify(t) for t in box.forward_to],
+                                  "keep_copy": box.keep_copy})
+        return {"rules": rules, "count": len(rules),
+                "max_hops": router.max_forwards,
+                "forwarded": router.forwarded}
 
     @app.post("/wait", tags=["write"])
     async def wait(request: WaitRequest) -> dict[str, Any]:

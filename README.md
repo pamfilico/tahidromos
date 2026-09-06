@@ -195,6 +195,53 @@ echo  replied depth=3 to=echo2  subject='Re: ping pong'
 echo2 replied depth=8 to=echo   subject='Re: ping pong'   ← stops at the limit
 ```
 
+## Forwarding
+
+A forward is not a reply, and getting that distinction right is what makes a
+forwarded conversation testable:
+
+```sh
+curl -sX POST localhost:8080/forward -H 'content-type: application/json' -d '{
+  "user": "bob", "uid": "3", "to": "carol", "note": "Carol — see below."
+}'
+```
+
+![Forwarding a message](docs/screenshots/forward.png)
+
+The server adds the `Fwd:` prefix (once, however many hops), builds the
+`---------- Forwarded message ----------` block with the original From, Date,
+Subject and To, and **carries the attachments across**. It sets
+`X-Forwarded-Message-Id` pointing at the original, and no `In-Reply-To` —
+because a forward is not a reply. `References` is carried, so when Carol
+replies, her reply still threads back to Alice's original:
+
+```
+alice → bob          Q3 report
+bob   → carol        Fwd: Q3 report          (no In-Reply-To, References kept)
+carol → bob          Re: Fwd: Q3 report      (In-Reply-To = the forward)
+bob   → carol        Re: Fwd: Q3 report      (depth 3, root still Alice's message)
+```
+
+`"mode": "attachment"` attaches the original as `message/rfc822` instead of
+quoting it, for when the bytes have to survive untouched.
+
+### Mailboxes that forward on their own
+
+A mailbox can forward everything it receives, the way an alias does:
+
+```yaml
+mailboxes:
+  - name: helpdesk
+    forward_to: [support@shop.test]     # keeps a copy as well
+  - name: contact
+    forward_to: [support@shop.test]
+    keep_copy: false                    # a pure redirect
+```
+
+`GET /forwards` lists the rules. Two mailboxes pointing at each other cannot
+run away: every forward carries a hop count and the path of mailboxes it has
+already been through, and `MAIL_MAX_FORWARDS` (default 5) caps the rest.
+
 ## Magic links and one-time codes
 
 Every message arrives with the parts an end-to-end test actually asserts on,
@@ -362,7 +409,8 @@ Interactive docs at <http://localhost:8080/docs>.
 | `PATCH` | `/messages/{user}/{uid}` | Mark read or unread |
 | `DELETE` | `/messages/{user}` | Empty a mailbox between test cases |
 | `GET` | `/threads/{user}` | Grouped by `References` |
-| `POST` | `/send` · `/reply` | Send · reply with headers handled for you |
+| `POST` | `/send` · `/reply` · `/forward` | Send · reply · forward, headers handled for you |
+| `GET` | `/forwards` | Mailboxes that forward everything on |
 | `POST` | `/wait` | Block until a matching message arrives |
 | `GET` `POST` | `/templates` | List · render and send |
 | `GET` `POST` | `/templates/{name}/preview` | Rendered HTML, without sending |
@@ -415,6 +463,7 @@ off, and both are one variable.
 | `MAIL_ACCOUNTS` | `alice,bob,carol,…` | Seeded mailboxes; `user` or `user:password` |
 | `MAIL_DEFAULT_PASSWORD` | `password` | Shared password for seeded mailboxes |
 | `MAIL_AUTO_CREATE` | `true` | Create unknown local mailboxes on first delivery |
+| `MAIL_MAX_FORWARDS` | `5` | Hop limit for mailboxes that forward on |
 | `BOT_ENABLED` | `true` | Run the auto-responders |
 | `BOT_ACCOUNTS` | `echo,echo2` | Which mailboxes auto-reply |
 | `BOT_MODE` | `echo` | `echo` · `mirror` · `ack` · `counter` |
@@ -462,10 +511,11 @@ tests/test_ui.py                   the mailbox browser and its data
 tests/test_templates.py            all eight templates render and deliver
 tests/test_spam.py                 true positives, and zero false positives
 tests/test_inbound_and_scenarios.py inboxes, scenarios, extraction, webhooks
+tests/test_forwarding.py           forwards, replies to forwards, rules, loops
 tests/test_client_fixtures.py      the pytest fixtures users actually write with
 ```
 
-138 tests, about a minute.
+156 tests, about a minute, plus 12 for the JavaScript client.
 
 ### What is inside
 

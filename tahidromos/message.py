@@ -26,7 +26,15 @@ POLICY = email.policy.default
 TRANSPORT_POLICY = email.policy.SMTP
 
 RE_PREFIX = re.compile(r"^\s*(re|aw|sv|antw|res)\s*(\[\d+\])?\s*:\s*", re.IGNORECASE)
+# Fwd:, FW:, WG: (German), TR: (French), RV: (Spanish), Enc: (Portuguese)
+FWD_PREFIX = re.compile(r"^\s*(fwd?|wg|tr|rv|enc)\s*(\[\d+\])?\s*:\s*", re.IGNORECASE)
+
 DEPTH_HEADER = "X-Tahidromos-Depth"
+# Gmail's convention, and the only reliable way to tie a forward back to the
+# message it came from once the body has been rewritten.
+FORWARDED_ID_HEADER = "X-Forwarded-Message-Id"
+FORWARD_COUNT_HEADER = "X-Tahidromos-Forward-Count"
+FORWARD_PATH_HEADER = "X-Tahidromos-Forward-Path"
 
 
 def parse(raw: bytes | str) -> EmailMessage:
@@ -80,6 +88,53 @@ def reply_subject(subject: str) -> str:
     if RE_PREFIX.match(subject):
         return subject
     return f"Re: {subject}" if subject else "Re:"
+
+
+def forward_subject(subject: str) -> str:
+    """`Report` -> `Fwd: Report`, and `Fwd: Report` stays as it is."""
+    subject = (subject or "").strip()
+    if FWD_PREFIX.match(subject):
+        return subject
+    return f"Fwd: {subject}" if subject else "Fwd:"
+
+
+FORWARD_SEPARATOR = "---------- Forwarded message ----------"
+
+
+def forward_header_block(original: EmailMessage) -> str:
+    """The block every mail client puts above a forwarded body."""
+    lines = [FORWARD_SEPARATOR]
+    for name in ("From", "Date", "Subject", "To", "Cc"):
+        value = str(original.get(name, "")).strip()
+        if value:
+            lines.append(f"{name}: {value}")
+    return "\n".join(lines)
+
+
+def forward_header_block_html(original: EmailMessage) -> str:
+    import html as _html
+
+    rows = []
+    for name in ("From", "Date", "Subject", "To", "Cc"):
+        value = str(original.get(name, "")).strip()
+        if value:
+            rows.append(
+                f'<tr><td style="color:#6b7280;padding-right:10px;vertical-align:top">'
+                f'{name}:</td><td>{_html.escape(value)}</td></tr>')
+    return (
+        '<div style="margin:16px 0 8px;color:#6b7280">'
+        f'{_html.escape(FORWARD_SEPARATOR)}</div>'
+        f'<table style="font-size:13px;margin-bottom:12px">{"".join(rows)}</table>'
+    )
+
+
+def forward_count(message: EmailMessage) -> int:
+    raw = str(message.get(FORWARD_COUNT_HEADER, "")).strip()
+    return int(raw) if raw.isdigit() else 0
+
+
+def forward_path(message: EmailMessage) -> list[str]:
+    return [hop for hop in str(message.get(FORWARD_PATH_HEADER, "")).split() if hop]
 
 
 def references_chain(parent: EmailMessage, limit: int = 40) -> list[str]:
@@ -167,10 +222,106 @@ def build_reply(parent: EmailMessage, body: str, sender: str, reply_all: bool = 
         reply["References"] = " ".join(chain)
     reply[DEPTH_HEADER] = str(depth(parent) + 1)
 
+    # Carry the forward trail through replies too, so a loop that alternates
+    # between a forwarding rule and an auto-responder is still detectable.
+    trail = forward_path(parent)
+    if trail:
+        reply[FORWARD_PATH_HEADER] = " ".join(trail)
+    if forward_count(parent):
+        reply[FORWARD_COUNT_HEADER] = str(forward_count(parent))
+
     for name, value in (headers or {}).items():
         del reply[name]
         reply[name] = value
     return reply
+
+
+def build_forward(original: EmailMessage, sender: str, to: Iterable[str] | str,
+                  note: str = "", cc: Iterable[str] | str | None = None,
+                  mode: str = "inline", keep_thread: bool = True,
+                  headers: dict[str, str] | None = None,
+                  domain: str = "tahidromos.test") -> EmailMessage:
+    """Forward a message, the way a mail client does.
+
+    `mode="inline"` quotes the original under a forwarded-header block and
+    carries its attachments across. `mode="attachment"` attaches the whole
+    original as message/rfc822 instead, which is what you want when the bytes
+    have to survive untouched.
+
+    A forward is not a reply, so no In-Reply-To is set. `References` is carried
+    when `keep_thread` (Gmail's behaviour, and it means a reply to the forward
+    still lands in the right conversation), and `X-Forwarded-Message-Id` always
+    points back at the original.
+    """
+    subject = forward_subject(str(original.get("Subject", "")))
+    original_text = plain_body(original)
+    original_html = html_body(original)
+
+    text = note.rstrip() + "\n\n" if note.strip() else ""
+    text += forward_header_block(original)
+    if mode == "inline":
+        text += "\n\n" + original_text
+    else:
+        text += "\n\n(the original message is attached)"
+
+    forward = build(sender, to, subject, text, cc=cc, domain=domain)
+
+    if mode == "inline" and original_html:
+        import html as _html
+
+        note_html = (f"<div>{_html.escape(note).replace(chr(10), '<br>')}</div>"
+                     if note.strip() else "")
+        forward.add_alternative(
+            f"<html><body>{note_html}{forward_header_block_html(original)}"
+            f"<div>{original_html}</div></body></html>", subtype="html")
+
+    if mode == "attachment":
+        forward.add_attachment(original)          # message/rfc822
+    else:
+        _carry_attachments(original, forward)
+
+    original_id = str(original.get("Message-ID", "")).strip()
+    if original_id:
+        forward[FORWARDED_ID_HEADER] = original_id
+    if keep_thread:
+        chain = references_chain(original)
+        if chain:
+            forward["References"] = " ".join(chain)
+
+    forward[DEPTH_HEADER] = str(depth(original) + 1)
+    forward[FORWARD_COUNT_HEADER] = str(forward_count(original) + 1)
+    path = forward_path(original) + [sender]
+    forward[FORWARD_PATH_HEADER] = " ".join(path)
+
+    for name, value in (headers or {}).items():
+        del forward[name]
+        forward[name] = value
+    return forward
+
+
+def _carry_attachments(original: EmailMessage, target: EmailMessage) -> None:
+    """Copy the original's attachments onto the forward.
+
+    A forward that silently drops the invoice is worse than no forward.
+    """
+    for part in original.iter_attachments():
+        content_type = part.get_content_type()
+        maintype, _, subtype = content_type.partition("/")
+        filename = part.get_filename()
+
+        if maintype == "message":
+            # message/* payloads are sub-messages, not bytes
+            nested = part.get_payload(0) if part.is_multipart() else None
+            if nested is not None:
+                target.add_attachment(nested)
+            continue
+
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        target.add_attachment(payload, maintype=maintype or "application",
+                              subtype=subtype or "octet-stream",
+                              filename=filename or f"attachment.{subtype or 'bin'}")
 
 
 def summarize_thread(messages: list[dict]) -> list[dict]:

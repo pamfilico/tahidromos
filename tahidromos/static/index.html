@@ -517,6 +517,7 @@ function renderReader(message){
       <span style="flex:1"></span>
       <button class="pill" id="reply">↩ Reply</button>
       <button class="pill" id="reply-all">Reply all</button>
+      <button class="pill" id="forward">↪ Forward</button>
       <button class="pill" id="seen">${message.seen ? "Mark unread" : "Mark read"}</button>
     </div>
     <div class="body" id="body"><pre>${quoted}</pre></div></div>`;
@@ -529,6 +530,7 @@ function renderReader(message){
 
   $("reply").onclick = () => openComposer({mode:"reply", message});
   $("reply-all").onclick = () => openComposer({mode:"reply", message, replyAll:true});
+  $("forward").onclick = () => openComposer({mode:"forward", message});
   $("seen").onclick = async () => {
     await api(`/messages/${encodeURIComponent(state.user)}/${message.uid}`, {
       method:"PATCH", headers:{"content-type":"application/json"},
@@ -759,23 +761,39 @@ function openComposer({mode, message = null, replyAll = false}){
   if(!state.user) return toast("Select a mailbox first");
   draft = {mode, message, replyAll};
   const replying = mode === "reply" && message;
+  const forwarding = mode === "forward" && message;
 
-  $("composer-title").textContent = replying ? (replyAll ? "Reply all" : "Reply") : "New message";
+  $("composer-title").textContent =
+    replying ? (replyAll ? "Reply all" : "Reply") : forwarding ? "Forward" : "New message";
   $("c-from").value = state.user;
+  // A forward needs a recipient typed in; a reply already knows where it goes.
   $("c-to").value = replying ? nameOf(message.from) : "";
   $("c-subject").value = replying
-    ? (/^re:/i.test(message.subject || "") ? message.subject : `Re: ${message.subject || ""}`) : "";
+    ? (/^re:/i.test(message.subject || "") ? message.subject : `Re: ${message.subject || ""}`)
+    : forwarding
+      ? (/^(fwd?|wg|tr|rv|enc):/i.test(message.subject || "")
+          ? message.subject : `Fwd: ${message.subject || ""}`)
+      : "";
   $("c-body").value = "";
 
-  // On a reply the server builds In-Reply-To / References from the original,
-  // so To and Subject are shown for context but not editable.
+  // The server builds the threading headers and the forwarded block, so To
+  // and Subject are context on a reply, and only To is yours on a forward.
   const note = $("composer-thread");
-  note.hidden = !replying;
-  if(replying) note.textContent = `threaded onto ${message.message_id} — depth ${(message.depth||0)+1}`;
+  note.hidden = !(replying || forwarding);
+  if(replying){
+    note.textContent = `threaded onto ${message.message_id} — depth ${(message.depth||0)+1}`;
+  } else if(forwarding){
+    const count = (message.attachments || []).length;
+    note.textContent = `forwarding ${message.message_id}`
+      + (count ? ` — ${count} attachment(s) carried over` : "");
+  }
   $("c-to").disabled = !!replying;
-  $("c-subject").disabled = !!replying;
+  $("c-subject").disabled = !!(replying || forwarding);
   $("composer-hint").textContent = replying
-    ? "Reply headers are built by the server." : "Delivered through the real mail server.";
+    ? "Reply headers are built by the server."
+    : forwarding
+      ? "The forwarded block and attachments are added by the server."
+      : "Delivered through the real mail server.";
 
   $("sheet").classList.add("open");
   setTimeout(() => $("c-body").focus(), 40);
@@ -786,10 +804,20 @@ function closeComposer(){ $("sheet").classList.remove("open"); draft = null; }
 async function sendDraft(){
   if(!draft) return;
   const body = $("c-body").value.trim();
-  if(!body) return toast("Write something first");
+  // A forward is meaningful with no note of its own; a reply is not.
+  if(!body && draft.mode !== "forward") return toast("Write something first");
   $("composer-send").disabled = true;
   try{
-    if(draft.mode === "reply"){
+    if(draft.mode === "forward"){
+      const to = $("c-to").value.trim();
+      if(!to){ $("composer-send").disabled = false; return toast("Who is it going to?"); }
+      const result = await api("/forward", {
+        method:"POST", headers:{"content-type":"application/json"},
+        body: JSON.stringify({user: state.user, uid: draft.message.uid,
+                              to: to.split(/[,;\s]+/), note: body})});
+      const carried = (result.attachments || []).filter(Boolean).length;
+      toast(`Forwarded${carried ? ` with ${carried} attachment(s)` : ""}`);
+    } else if(draft.mode === "reply"){
       const result = await api("/reply", {
         method:"POST", headers:{"content-type":"application/json"},
         body: JSON.stringify({user: state.user, uid: draft.message.uid, text: body,

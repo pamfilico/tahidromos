@@ -44,6 +44,16 @@ apps:
     mailboxes:
       - orders
       - customer
+      # A mailbox can forward everything on, the way an alias does. Anything
+      # sent to helpdesk@shop.test also lands with support@shop.test.
+      - name: helpdesk
+        description: Forwards to support, keeping a copy
+        forward_to: [support@shop.test]
+      # keep_copy: false makes it a pure redirect — nothing stays here.
+      - name: contact
+        description: Redirects to support, keeping nothing
+        forward_to: [support@shop.test]
+        keep_copy: false
       - support
       - name: echo
         bot: true

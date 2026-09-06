@@ -96,6 +96,40 @@ describe("tahidromos client", () => {
     assert.ok(second.depth > first.depth, `${second.depth} should exceed ${first.depth}`);
   });
 
+  maybe("forwards a message and keeps its attachments", async () => {
+    const forwarder = await mail.inbox("fwd-from");
+    const recipient = await mail.inbox("fwd-to");
+    await mail.scenario("attachment", forwarder.address, { seed: 5 });
+    const original = await forwarder.waitFor({ subjectContains: "Invoice", timeout: 20 });
+
+    const forwarded = await forwarder.forward(original, recipient.address, "Passing this on.");
+    const arrived = await recipient.waitFor({ messageId: forwarded.message_id, timeout: 20 });
+
+    assert.ok(arrived.subject.startsWith("Fwd:"));
+    assert.equal(arrived.inReplyTo, null, "a forward is not a reply");
+    assert.equal(arrived.forwardedFrom, original.messageId);
+    assert.ok(arrived.text.includes("Forwarded message"));
+    const names = arrived.attachments.map((a) => a.filename);
+    assert.ok(names.includes("invoice-10432.pdf"), `attachments lost: ${names}`);
+  });
+
+  maybe("replies to a forward and threads correctly", async () => {
+    const forwarder = await mail.inbox("chain-from");
+    const recipient = await mail.inbox("chain-to");
+    await mail.send("alice@tahidromos.test", forwarder.address, "Quarterly numbers", "See attached.");
+    const original = await forwarder.waitFor({ subjectContains: "Quarterly", timeout: 20 });
+
+    const forwarded = await forwarder.forward(original, recipient.address);
+    const arrived = await recipient.waitFor({ messageId: forwarded.message_id, timeout: 20 });
+
+    await recipient.reply(arrived, "Thanks, looks right.");
+    const back = await forwarder.waitFor({ subjectContains: "Quarterly", unseenOnly: true, timeout: 20 });
+
+    assert.equal(back.subject, "Re: Fwd: Quarterly numbers");
+    assert.equal(back.inReplyTo, forwarded.message_id);
+    assert.ok(back.references.includes(original.messageId), "should reach back to the original");
+  });
+
   maybe("scores spam", async () => {
     const result = await mail.spam({
       subject: "WIN FREE MONEY NOW!!!",

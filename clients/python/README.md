@@ -78,6 +78,25 @@ print(inbox.wait(subject_contains="Receipt").text)
 mail.cleanup()          # delete every inbox this client made
 ```
 
+### Forwarding
+
+```python
+def test_a_forwarded_thread_keeps_going(inbox_factory):
+    bob, carol = inbox_factory("bob"), inbox_factory("carol")
+    bob.send(to=bob.address, subject="Q3 report", text="Here it is.")
+    original = bob.wait(subject_contains="Q3 report")
+
+    forwarded = bob.forward(original, carol.address, note="Carol — see below.")
+    at_carol = carol.wait(message_id=forwarded["message_id"])
+
+    assert at_carol.subject == "Fwd: Q3 report"
+    assert at_carol.in_reply_to is None            # a forward is not a reply
+    assert at_carol.forwarded_from == original.message_id
+    assert at_carol.attachments == original.attachments
+
+    carol.reply(at_carol, "Thanks.")               # and the thread continues
+```
+
 ### Canned awkward messages
 
 ```python

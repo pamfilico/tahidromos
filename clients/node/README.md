@@ -103,6 +103,20 @@ export default defineConfig({
 });
 ```
 
+## Forwarding
+
+```js
+const forwarded = await bob.forward(original, carol.address, "Carol — see below.");
+const arrived = await carol.waitFor({ messageId: forwarded.message_id });
+
+expect(arrived.subject).toBe("Fwd: Q3 report");
+expect(arrived.inReplyTo).toBeNull();              // a forward is not a reply
+expect(arrived.forwardedFrom).toBe(original.messageId);
+expect(arrived.attachments).toHaveLength(2);       // carried across
+
+await carol.reply(arrived, "Thanks.");             // and the thread continues
+```
+
 ## What a message gives you
 
 | Property | |
@@ -112,6 +126,7 @@ export default defineConfig({
 | `link` `links` `linkContaining(s)` | the magic link, and the rest |
 | `code` | the one-time code, if there is one |
 | `messageId` `inReplyTo` `references` `depth` | the thread position |
+| `attachments` `forwardedFrom` `forwardCount` | attachments, and the forward trail |
 | `raw` | the full RFC 5322 source |
 
 ## Filters for `waitFor`

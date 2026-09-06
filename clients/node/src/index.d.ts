@@ -41,6 +41,9 @@ export declare class Message {
   readonly depth: number;
   readonly seen: boolean;
   readonly raw: string;
+  readonly attachments: Array<{ filename: string | null; content_type: string; size: number }>;
+  readonly forwardedFrom: string | null;
+  readonly forwardCount: number;
   linkContaining(needle: string): string;
 }
 
@@ -55,6 +58,7 @@ export declare class Inbox {
   threads(): Promise<any[]>;
   send(to: string | string[], subject?: string, text?: string, extra?: object): Promise<any>;
   reply(message: Message | string, text: string, extra?: object): Promise<any>;
+  forward(message: Message | string, to: string | string[], note?: string, extra?: object): Promise<any>;
   markRead(message: Message | string, seen?: boolean): Promise<any>;
   purge(mailbox?: string): Promise<number>;
   delete(): Promise<boolean>;
@@ -78,6 +82,7 @@ export declare class Tahidromos {
   templates(): Promise<any[]>;
   scenario(name: string, to: string, options?: object): Promise<any>;
   scenarios(): Promise<any[]>;
+  forwardRules(): Promise<any>;
   conversation(participants: string[], options?: object): Promise<any>;
   spam(payload: object): Promise<any>;
   parse(text?: string, html?: string): Promise<any>;

@@ -74,6 +74,11 @@ export class Message {
   get threadRoot() { return this.data.thread_root ?? ""; }
   get depth() { return this.data.depth ?? 0; }
   get seen() { return Boolean(this.data.seen); }
+  /** Filename, content type and size for each attached part. */
+  get attachments() { return this.data.attachments ?? []; }
+  /** The Message-ID this was forwarded from, if it is a forward. */
+  get forwardedFrom() { return this.data.forwarded_from ?? null; }
+  get forwardCount() { return this.data.forward_count ?? 0; }
   get raw() { return this.data.raw ?? ""; }
 
   linkContaining(needle) {
@@ -154,6 +159,20 @@ export class Inbox {
   async reply(message, text, extra = {}) {
     const uid = message instanceof Message ? message.uid : message;
     return this.client._post("/reply", { user: this.address, uid, text, ...extra });
+  }
+
+  /**
+   * Forward a message on. The Fwd: prefix, the forwarded-header block and the
+   * attachments are handled by the server.
+   * @param {object} extra e.g. { mode: "attachment", cc: [...], note: "..." }
+   */
+  async forward(message, to, note = "", extra = {}) {
+    const uid = message instanceof Message ? message.uid : message;
+    return this.client._post("/forward", {
+      user: this.address, uid, note,
+      to: Array.isArray(to) ? to.map(String) : [String(to)],
+      ...extra,
+    });
   }
 
   async markRead(message, seen = true) {
@@ -284,6 +303,9 @@ export class Tahidromos {
   }
 
   async scenarios() { return (await this._get("/scenarios")).scenarios; }
+
+  /** Mailboxes that forward everything on, from the app config. */
+  async forwardRules() { return this._get("/forwards"); }
 
   async conversation(participants, options = {}) {
     return this._post("/conversation", {

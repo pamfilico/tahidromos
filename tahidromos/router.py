@@ -19,6 +19,7 @@ import logging
 import time
 from email.utils import formatdate, make_msgid
 
+from . import message as msg
 from .config import Config
 from .store import Store
 
@@ -26,12 +27,15 @@ log = logging.getLogger("tahidromos.router")
 
 
 class Router:
-    def __init__(self, store: Store, config: Config, auto_create: bool = True):
+    def __init__(self, store: Store, config: Config, auto_create: bool = True,
+                 max_forwards: int = 5):
         self.store = store
         self.config = config
         self.auto_create = auto_create
+        self.max_forwards = max_forwards
         self.delivered = 0
         self.captured = 0
+        self.forwarded = 0
         self.listeners: list = []
 
     # -- recipient policy -------------------------------------------------
@@ -102,6 +106,38 @@ class Router:
         ).encode()
         return received + content
 
+    async def apply_forward_rules(self, mailbox: str, raw: bytes, targets: list[str]) -> None:
+        """Forward an incoming message on, the way an alias does.
+
+        Two things stop this looping forever: a hop counter, and the path of
+        mailboxes the message has already passed through — so a pair of
+        mailboxes forwarding to each other stops at the first repeat rather
+        than filling the disk.
+        """
+        original = msg.parse(raw)
+        hops = msg.forward_count(original)
+        if hops >= self.max_forwards:
+            log.warning("not forwarding from %s: %s hops reached the limit", mailbox, hops)
+            return
+
+        path = {hop.lower() for hop in msg.forward_path(original)}
+        for target in targets:
+            if target.lower() == mailbox.lower() or target.lower() in path:
+                log.warning("not forwarding %s -> %s: already in the forward path",
+                            mailbox, target)
+                continue
+
+            forward = msg.build_forward(
+                original, sender=mailbox, to=[target],
+                note=f"Automatically forwarded by {mailbox}.",
+                domain=mailbox.split("@")[-1],
+                headers={"Auto-Submitted": "auto-forwarded"},
+            )
+            self.forwarded += 1
+            log.info("auto-forward %s -> %s (hop %s)", mailbox, target, hops + 1)
+            await self.deliver(mailbox, [target], msg.to_bytes(forward),
+                               submitted_by=None, peer="forward-rule")
+
     async def deliver(self, mail_from: str, recipients: list[str], content: bytes,
                       submitted_by: str | None = None, peer: str = "unknown") -> str:
         receipt = f"{int(time.time() * 1000):x}"
@@ -109,6 +145,14 @@ class Router:
         for recipient in recipients:
             target, captured = self.resolve(recipient)
             raw = self.add_received_header(content, mail_from, recipient, peer)
+
+            rules, keep_copy = self.config.forwards_for(target)
+            if rules:
+                await self.apply_forward_rules(target, raw, rules)
+                if not keep_copy:
+                    log.info("forwarded %s onward without keeping a copy", target)
+                    continue
+
             uid = self.store.deliver(target, raw, mailbox="INBOX", envelope_to=recipient)
             if uid is None:
                 log.warning("could not deliver to %s", target)

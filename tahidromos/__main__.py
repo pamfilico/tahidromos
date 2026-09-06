@@ -74,7 +74,8 @@ async def serve() -> int:
             store.create_account(mailbox.address, mailbox.password, app=app_config.name,
                                  is_bot=mailbox.is_bot, description=mailbox.description)
 
-    router = Router(store, config, auto_create=flag("MAIL_AUTO_CREATE", "true"))
+    router = Router(store, config, auto_create=flag("MAIL_AUTO_CREATE", "true"),
+                    max_forwards=number("MAIL_MAX_FORWARDS", "5"))
 
     # Optional: POST every delivery at your app, shaped like a provider's
     # inbound-parse webhook. Off unless INBOUND_WEBHOOK_URL is set.

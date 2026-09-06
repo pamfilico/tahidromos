@@ -40,6 +40,10 @@ class Mailbox:
     is_bot: bool = False
     is_capture: bool = False
     description: str = ""
+    # Server-side forwarding, the way an alias works: anything delivered here
+    # is forwarded on. `keep_copy` decides whether it also stays put.
+    forward_to: list[str] = field(default_factory=list)
+    keep_copy: bool = True
 
 
 @dataclass
@@ -91,6 +95,14 @@ class Config:
 
     def bots(self) -> list[Mailbox]:
         return [box for _, box in self.all_mailboxes() if box.is_bot]
+
+    def forwards_for(self, address: str) -> tuple[list[str], bool]:
+        """(targets, keep_copy) for a mailbox with a forwarding rule."""
+        address = address.lower()
+        for _, box in self.all_mailboxes():
+            if box.address.lower() == address and box.forward_to:
+                return [self.qualify(t) for t in box.forward_to], box.keep_copy
+        return [], True
 
     def as_dict(self) -> dict:
         return {
@@ -149,12 +161,18 @@ def _mailboxes(raw, domain: str, password: str, bot_names: set[str]) -> list[Mai
         localpart = str(name).split("@", 1)[0].strip()
         if not localpart:
             continue
+        raw_forward = options.get("forward_to") or options.get("forward") or []
+        if isinstance(raw_forward, str):
+            raw_forward = split_list(raw_forward)
+
         boxes.append(Mailbox(
             localpart=localpart,
             address=f"{localpart}@{domain}",
             password=str(options.get("password") or password),
             is_bot=bool(options.get("bot", localpart in bot_names)),
             description=str(options.get("description", "")),
+            forward_to=[str(target).strip() for target in raw_forward if str(target).strip()],
+            keep_copy=bool(options.get("keep_copy", True)),
         ))
     return boxes
 
