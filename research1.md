@@ -10,7 +10,8 @@
 > * **[OPEN]** = agreed, not built yet
 > * **[SKIPPED]** = deliberately not doing, with the reason
 >
-> The suite went from 55 to **138 tests** in the process. The one rule I held
+> The suite went from 55 to **138 pytest tests plus 10 JavaScript ones** in
+> the process, all running in CI. The one rule I held
 > to throughout: the zero-configuration `docker run` had to keep working with
 > no flags, so everything new is either free or behind a single environment
 > variable that announces itself when it is off.
@@ -107,7 +108,7 @@ Key reading of the table: tahidromos's closest functional peer is **Greenmail** 
 5. ~~**Inbound-webhook simulator.**~~ **DONE.** `INBOUND_WEBHOOK_URL` turns it on; `INBOUND_WEBHOOK_FORMAT` picks `postmark` · `sendgrid` · `mailgun` · `raw`. Implemented as a delivery listener in the router, so it fires for **every** delivery path — SMTP, submission, the API, the bots. Postmark payloads include `MailboxHash` (plus-address tag) and `StrippedTextReply`; Mailgun gets `stripped-text`. Retries with backoff; `GET /webhook` reports sent/failed/last error. Verified end-to-end against a real receiver in all four shapes.
 6. **Testcontainers module** — **[OPEN]**. Agreed, and cheap now that the image is a single container with a `HEALTHCHECK` and a `/health` endpoint. Not built.
 7. ~~**Snapshot/assertion helpers** … plus built-in quoted-reply and signature stripping~~ **MOSTLY DONE.** `tahidromos/extract.py` strips quoted replies (English, German, French, Spanish, Greek attribution lines, Outlook header blocks, RFC 3676 signature separators) and is exposed both as `POST /parse` and as `stripped_text` on every message. `POST /scenarios` with a `seed` gives byte-identical fixtures, which is the snapshot half. **[OPEN]:** a dedicated normalise-and-diff assertion helper.
-8. **JS/TS client + Playwright/Cypress helpers** — **PARTLY DONE.** The *server side* of it is finished and is the hard half: every message carries `code`, `link`, `links` and `stripped_text`, and `POST /wait` accepts `has_code` and `link_contains`, so `waitForEmail`/`getOtp`/`getMagicLink` are each one HTTP call. **[OPEN]:** the npm package wrapping them.
+8. ~~**JS/TS client + Playwright/Cypress helpers**~~ **DONE.** `clients/node/` ships `@pamfilico/tahidromos` with no dependencies (Node 18 `fetch`). Playwright fixtures mirror the pytest ones — `inbox`, `inboxFactory`, `mail`, `echoBot` — plus `signInWithMagicLink` and `enterOneTimeCode` for the two flows nearly every app shares. `waitForCode` and `waitForLink` are one call each. Cypress and Vitest are covered too; the Playwright import is a separate entry point. TypeScript declarations included. Ten tests, run in CI.
 
 ### Tier 3 — Longer-term / strategic differentiators
 9. **MCP server** — **[OPEN]**, and I agree it is the most interesting item left. Every primitive it needs now exists (`/inboxes`, `/send`, `/reply`, `/wait`, `/threads`, echo bots as the counterparty), so it really is a thin wrapper. Worth doing next.
@@ -176,8 +177,13 @@ Everything in the section below is **[OPEN]**. The repository is published at
 `github.com/pamfilico/tahidromos` with CI green and the image on GHCR, and it
 is listed in the Open source section of pamfili.co. No Show HN, no subreddit
 posts, no awesome-list PRs, no comments on MailHog #111. That is deliberate
-sequencing — the README, the pytest plugin and the demo screenshots are the
-things those posts would link to, and they only just landed.
+sequencing — the README, the two client libraries and the demo screenshots are
+the things those posts would link to, and they only just landed.
+
+Of what remains on the build side, only three items are open: the **MCP
+server** (#9, and the one I would do next), a **Testcontainers module** (#6),
+and a **normalise-and-diff snapshot helper** (#7). Everything else in Tiers 1
+and 2 is shipped.
 
 The one piece of homework worth doing before any of it: **verify the pricing
 figures again**. The Caveats section is right that they move, and quoting a
