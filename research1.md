@@ -10,7 +10,7 @@
 > * **[OPEN]** = agreed, not built yet
 > * **[SKIPPED]** = deliberately not doing, with the reason
 >
-> The suite went from 55 to **138 pytest tests plus 10 JavaScript ones** in
+> The suite went from 55 to **166 pytest tests plus 12 JavaScript ones** in
 > the process, all running in CI. The one rule I held
 > to throughout: the zero-configuration `docker run` had to keep working with
 > no flags, so everything new is either free or behind a single environment
@@ -111,7 +111,7 @@ Key reading of the table: tahidromos's closest functional peer is **Greenmail** 
 8. ~~**JS/TS client + Playwright/Cypress helpers**~~ **DONE.** `clients/node/` ships `@pamfilico/tahidromos` with no dependencies (Node 18 `fetch`). Playwright fixtures mirror the pytest ones — `inbox`, `inboxFactory`, `mail`, `echoBot` — plus `signInWithMagicLink` and `enterOneTimeCode` for the two flows nearly every app shares. `waitForCode` and `waitForLink` are one call each. Cypress and Vitest are covered too; the Playwright import is a separate entry point. TypeScript declarations included. Ten tests, run in CI.
 
 ### Tier 3 — Longer-term / strategic differentiators
-9. **MCP server** — **[OPEN]**, and I agree it is the most interesting item left. Every primitive it needs now exists (`/inboxes`, `/send`, `/reply`, `/wait`, `/threads`, echo bots as the counterparty), so it really is a thin wrapper. Worth doing next.
+9. ~~**MCP server ("tahidromos-mcp"): a local, disposable inbox for AI agents.**~~ **DONE.** `clients/mcp/` ships `tahidromos-mcp`: sixteen tools over stdio — `create_inbox`, `wait_for_email` (blocks server-side, so an agent waits instead of burning tokens polling), `send_email`, `reply_to_email`, `forward_email`, `echo_bot_address`, `send_test_scenario`, `check_spam_score`, `cleanup`. The research's read of the gap was right: every existing agent-email MCP is production or cloud infrastructure, and none of them is a **local, offline, disposable test harness**. This one needs no account, no network and no money, and the echo bots give an agent a counterparty to rehearse a multi-turn exchange against. Ten tests drive it through `call_tool`, plus a stdio round trip.
 10. **Framework adapters** for Rails ActionMailer, Laravel, Django/Nest — one-line config + assertion helpers. Effort: medium, incremental per-framework.
 11. ~~**Optional single-binary / lighter mode.**~~ **DONE, and it is not optional — it is the only mode.** There is one container, one process, four Python dependencies, and no Mailpit or Roundcube to make optional. `docker run -p 1025:25 -p 1143:143 -p 8080:8080 ghcr.io/pamfilico/tahidromos` is the whole install.
 12. ~~**Deterministic/seeded fixtures**~~ **DONE.** `POST /conversation` takes a `seed`. `POST /scenarios` ships ten: `bounce` (a genuine RFC 3464 multipart/report, not a text imitation), `newsletter` (List-Unsubscribe + One-Click), `html_only`, `otp`, `deep_reply`, `attachment`, `unicode`, `auto_reply`, `signed` (DKIM/SPF/DMARC headers), `large`. Seeded builds pin the MIME boundaries and `Date` too, so the bytes really are identical run to run.
@@ -180,10 +180,9 @@ posts, no awesome-list PRs, no comments on MailHog #111. That is deliberate
 sequencing — the README, the two client libraries and the demo screenshots are
 the things those posts would link to, and they only just landed.
 
-Of what remains on the build side, only three items are open: the **MCP
-server** (#9, and the one I would do next), a **Testcontainers module** (#6),
-and a **normalise-and-diff snapshot helper** (#7). Everything else in Tiers 1
-and 2 is shipped.
+Of what remains on the build side, two minor items are open: a
+**Testcontainers module** (#6) and a **normalise-and-diff snapshot helper**
+(#7). Everything else across all three tiers is shipped.
 
 The one piece of homework worth doing before any of it: **verify the pricing
 figures again**. The Caveats section is right that they move, and quoting a

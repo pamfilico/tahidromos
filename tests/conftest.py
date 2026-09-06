@@ -241,3 +241,9 @@ def api():
 def captured(api) -> MailClient:
     """The mailbox that catches anything addressed outside the local domains."""
     return MailClient(api.get("/overview").json()["capture_address"])
+
+
+@pytest.fixture(scope="session")
+def anyio_backend():
+    """The MCP tools are async; anyio only needs asyncio here."""
+    return "asyncio"

@@ -31,6 +31,8 @@ jobs:
           # the pytest fixtures ship as a package; installing it is what
           # registers them, exactly as a user would do it
           pip install -e clients/python
+          # the MCP tests import the server package; without it they skip
+          pip install -e clients/mcp
 
       - name: Build and start tahidromos
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build

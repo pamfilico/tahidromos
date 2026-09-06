@@ -1,2 +1,5 @@
 pytest==8.3.4
 requests==2.32.3
+# anyio ships the pytest plugin the MCP tests use. Left unpinned because the
+# mcp SDK requires a newer floor on recent Pythons than any pin we would pick.
+anyio>=4.7

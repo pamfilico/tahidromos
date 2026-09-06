@@ -381,6 +381,38 @@ curl -sX POST localhost:8080/scenarios -d '{"name":"bounce","to":"alice","seed":
 With a `seed` the bytes are identical every run, so they work as snapshot
 fixtures.
 
+## For AI agents
+
+An agent that handles email needs somewhere to practise. The alternatives are
+production inbox services: real addresses, real delivery, a bill, and an
+internet connection.
+
+```sh
+pip install tahidromos-mcp
+claude mcp add tahidromos -- tahidromos-mcp
+```
+
+Sixteen MCP tools over the same API: `create_inbox` for a disposable address,
+`wait_for_email` that blocks on the server instead of polling, `send_email`,
+`reply_to_email`, `forward_email`, `echo_bot_address` for a counterpart that
+always answers, `send_test_scenario` for deliberately awkward mail, and
+`check_spam_score`.
+
+A whole session, offline and free:
+
+```
+create_inbox(purpose="support")               → support-a1b2c3@tahidromos.test
+echo_bot_address()                            → echo@tahidromos.test
+send_email(…, "Ticket #42", "Is this fixed?")
+wait_for_email(address, in_reply_to=<id>)     → the reply, correctly threaded
+reply_to_email(address, uid, "Thanks.")
+cleanup()
+```
+
+Replies and forwards build their own `In-Reply-To`, `References` and prefixes,
+so an agent never constructs mail headers to hold a threaded conversation.
+See [`clients/mcp/`](clients/mcp).
+
 ## Nothing escapes
 
 Mail addressed outside the local domains is never sent onward. The recipient
@@ -513,9 +545,10 @@ tests/test_spam.py                 true positives, and zero false positives
 tests/test_inbound_and_scenarios.py inboxes, scenarios, extraction, webhooks
 tests/test_forwarding.py           forwards, replies to forwards, rules, loops
 tests/test_client_fixtures.py      the pytest fixtures users actually write with
+tests/test_mcp.py                  the MCP tools, driven through call_tool
 ```
 
-156 tests, about a minute, plus 12 for the JavaScript client.
+166 tests, about a minute, plus 12 for the JavaScript client.
 
 ### What is inside
 
@@ -536,6 +569,7 @@ tests/test_client_fixtures.py      the pytest fixtures users actually write with
 | `tahidromos/webhook.py` | Provider-shaped inbound webhooks |
 | `clients/python/` | `tahidromos-client` — the pytest fixtures |
 | `clients/node/` | `@pamfilico/tahidromos` — Playwright fixtures |
+| `clients/mcp/` | `tahidromos-mcp` — a disposable inbox for AI agents |
 
 Four runtime dependencies: FastAPI, uvicorn, PyYAML and cryptography. The mail
 servers, the spam scorer, the template renderer and the extraction all use only
