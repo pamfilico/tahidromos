@@ -19,8 +19,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: templates/react-email/package-lock.json
+
       - name: Install test dependencies
-        run: pip install -r tests/requirements.txt
+        run: |
+          pip install -r tests/requirements.txt
+          # the pytest fixtures ship as a package; installing it is what
+          # registers them, exactly as a user would do it
+          pip install -e clients/python
 
       - name: Build and start tahidromos
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
@@ -44,6 +54,12 @@ jobs:
 
       - name: Smoke test — send, reply, and reply to the reply
         run: python examples/reply_conversation.py --turns 6
+
+      - name: Check the React Email export is not stale
+        working-directory: templates/react-email
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
 
       - name: Run the test suite
         run: pytest
