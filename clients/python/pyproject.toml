@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tahidromos-client"
+version = "1.0.0"
+description = "Python client and pytest fixtures for tahidromos, the development mail server that can reply"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Georgios Pamfilis", email = "gpamfilis@gmail.com" }]
+keywords = ["email", "testing", "smtp", "imap", "pytest", "mail-server"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Framework :: Pytest",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Communications :: Email",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = ["requests>=2.25"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/pamfilico/tahidromos"
+Source = "https://github.com/pamfilico/tahidromos"
+Issues = "https://github.com/pamfilico/tahidromos/issues"
+
+# Registering the plugin here means `pip install tahidromos-client` is all it
+# takes for the fixtures to appear; there is no conftest wiring to copy.
+[project.entry-points.pytest11]
+tahidromos = "tahidromos_client.pytest_plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tahidromos_client"]

@@ -1,0 +1,202 @@
+{
+  "templates": [
+    {
+      "name": "welcome",
+      "summary": "Onboarding mail with a primary call to action",
+      "subject": "Welcome to {{ product }}, {{ name }}",
+      "from": "welcome@{{ domain }}",
+      "html": "welcome.html",
+      "text": "welcome.txt",
+      "source": "handwritten",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "name": "Alice",
+        "email": "alice@{{ domain }}",
+        "plan": "Starter",
+        "preheader": "Everything you need to get going.",
+        "first_step": "connect your first data source.",
+        "cta_label": "Open your dashboard",
+        "cta_url": "https://acme.test/dashboard",
+        "support_url": "https://acme.test/support",
+        "unsubscribe_url": "https://acme.test/unsubscribe?u=alice"
+      }
+    },
+    {
+      "name": "otp",
+      "summary": "Sign-in code plus a magic link — the e2e login case",
+      "subject": "{{ code }} is your {{ product }} sign-in code",
+      "from": "noreply@{{ domain }}",
+      "html": "otp.html",
+      "text": "otp.txt",
+      "source": "handwritten",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "code": "483920",
+        "expires_minutes": 10,
+        "magic_url": "https://acme.test/magic?token=b7f3a1c9e2"
+      }
+    },
+    {
+      "name": "password_reset",
+      "summary": "One-time reset link with the security footnote",
+      "subject": "Reset your {{ product }} password",
+      "from": "security@{{ domain }}",
+      "html": "password_reset.html",
+      "text": "password_reset.txt",
+      "source": "handwritten",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "email": "alice@{{ domain }}",
+        "expires_minutes": 30,
+        "reset_url": "https://acme.test/reset?token=9d2f1a8c4b7e",
+        "ip": "203.0.113.42",
+        "requested_at": "6 Sep 2026, 20:38 UTC"
+      }
+    },
+    {
+      "name": "receipt",
+      "summary": "Order confirmation with line items and a total",
+      "subject": "Your {{ product }} receipt — {{ order_id }}",
+      "from": "billing@{{ domain }}",
+      "html": "receipt.html",
+      "text": "receipt.txt",
+      "source": "handwritten",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "name": "Alice",
+        "order_id": "AC-10432",
+        "ship_date": "Tuesday",
+        "shipping": "€4.90",
+        "total": "€93.79",
+        "tracking_url": "https://acme.test/orders/AC-10432",
+        "items": [
+          {
+            "name": "Widget, large",
+            "qty": 2,
+            "price": "€39.98"
+          },
+          {
+            "name": "Gadget mount",
+            "qty": 1,
+            "price": "€48.91"
+          }
+        ]
+      }
+    },
+    {
+      "name": "digest",
+      "summary": "Newsletter with repeating articles and an unsubscribe",
+      "subject": "{{ headline }}",
+      "from": "news@{{ domain }}",
+      "html": "digest.html",
+      "text": "digest.txt",
+      "source": "handwritten",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "period": "Week 36",
+        "headline": "Three things worth reading",
+        "preheader": "Threading, IMAP, and why your tests are flaky.",
+        "intro": "A short list this week, all of it about email.",
+        "unsubscribe_url": "https://acme.test/unsubscribe?u=alice",
+        "articles": [
+          {
+            "tag": "Engineering",
+            "title": "Why your email tests are flaky",
+            "excerpt": "Shared inboxes and sleep() are the usual culprits.",
+            "url": "https://acme.test/posts/flaky-email-tests"
+          },
+          {
+            "tag": "Protocol",
+            "title": "In-Reply-To, References, and Re:",
+            "excerpt": "The three rules every mail client already agrees on.",
+            "url": "https://acme.test/posts/threading"
+          },
+          {
+            "tag": "Release",
+            "title": "Inbound parsing, without a tunnel",
+            "excerpt": "Test provider webhooks on your laptop, offline.",
+            "url": "https://acme.test/posts/inbound"
+          }
+        ]
+      }
+    },
+    {
+      "name": "alert",
+      "summary": "Dark-themed monitoring alert with a facts table",
+      "subject": "[{{ severity }}] {{ title }}",
+      "from": "alerts@{{ domain }}",
+      "html": "alert.html",
+      "text": "alert.txt",
+      "source": "handwritten",
+      "defaults": {
+        "company": "Acme",
+        "severity": "critical",
+        "severity_color": "#f87171",
+        "title": "Checkout error rate above 5%",
+        "body": "The checkout service has returned 5xx for 6.2% of requests over the last 10 minutes.",
+        "fired_at": "2026-09-06 20:38:11 UTC",
+        "runbook_url": "https://acme.test/runbooks/checkout-5xx",
+        "silence_url": "https://acme.test/alerts/silence?id=a91f",
+        "facts": [
+          {
+            "label": "service",
+            "value": "checkout-api"
+          },
+          {
+            "label": "error rate",
+            "value": "6.2%"
+          },
+          {
+            "label": "threshold",
+            "value": "5.0%"
+          },
+          {
+            "label": "region",
+            "value": "eu-central-1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invite",
+      "summary": "Team invitation with a facts table (authored in React Email)",
+      "subject": "{{ inviter }} added you to {{ team }}",
+      "from": "team@{{ domain }}",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "team": "Platform",
+        "role": "Editor",
+        "inviter": "Alice",
+        "inviter_email": "alice@{{ domain }}",
+        "expires_days": 7,
+        "accept_url": "https://acme.test/invite/accept?token=c81f2a",
+        "decline_url": "https://acme.test/invite/decline?token=c81f2a"
+      },
+      "html": "invite.html",
+      "text": "invite.txt",
+      "source": "react-email"
+    },
+    {
+      "name": "verify_email",
+      "summary": "Address confirmation link (authored in React Email)",
+      "subject": "Confirm your address for {{ product }}",
+      "from": "noreply@{{ domain }}",
+      "defaults": {
+        "product": "Acme",
+        "company": "Acme Inc.",
+        "email": "alice@{{ domain }}",
+        "expires_hours": 24,
+        "verify_url": "https://acme.test/verify?token=7e1b9d4f2a"
+      },
+      "html": "verify_email.html",
+      "text": "verify_email.txt",
+      "source": "react-email"
+    }
+  ]
+}

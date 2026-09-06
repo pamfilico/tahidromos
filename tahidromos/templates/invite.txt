@@ -1,0 +1,20 @@
+📮 {{ product }}
+
+
+{{ INVITER }} ADDED YOU TO {{ TEAM }}
+
+You now have {{ role }} access. Nothing to set up — open the workspace and you are in.
+
+Open {{ team }} {{ accept_url }}
+
+Workspace{{ team }}
+
+Role{{ role }}
+
+Invited by{{ inviter_email }}
+
+----------------------------------------
+
+This invitation expires in {{ expires_days }} days. Not expecting it? Decline {{ decline_url }}.
+
+{{ company }}

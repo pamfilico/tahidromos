@@ -1,0 +1,35 @@
+# Optional: score mail with Rspamd instead of the built-in heuristics.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rspamd.yml up -d
+#
+# The built-in scorer needs nothing and explains every rule it fires, which is
+# what you want while writing tests. Rspamd is a real filter under active
+# development, and is what you want when the question is "would production
+# have called this spam?".
+#
+# Everything else about tahidromos is unchanged; only /spam answers differently.
+
+services:
+  tahidromos:
+    environment:
+      RSPAMD_URL: http://rspamd:11333
+    depends_on:
+      rspamd:
+        condition: service_started
+
+  rspamd:
+    image: ghcr.io/rspamd/rspamd:latest
+    container_name: tahidromos-rspamd
+    restart: unless-stopped
+    environment:
+      RSPAMD_worker_normal__bind_socket: "0.0.0.0:11333"
+      RSPAMD_worker_controller__bind_socket: "0.0.0.0:11334"
+      # No Redis here, so switch off the modules that insist on it.
+      RSPAMD_options__filters: '"chartable,dkim,regexp,fuzzy_check"'
+    ports:
+      - "${PORT_RSPAMD:-11334}:11334"   # the Rspamd web interface
+    volumes:
+      - rspamd_data:/var/lib/rspamd
+
+volumes:
+  rspamd_data:

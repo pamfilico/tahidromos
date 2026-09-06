@@ -166,6 +166,47 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .empty code{font-family:var(--mono);font-size:11.5px;background:var(--panel);padding:1px 5px;
   border-radius:4px;border:1px solid var(--line)}
 
+/* ---------------------------------------------------------------- spam */
+.spam{margin:0 0 18px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);overflow:hidden}
+.spam-head{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer}
+.spam-score{font:13px/1 var(--mono);font-weight:700;padding:5px 9px;border-radius:6px;flex:none}
+.spam-score.ham{background:rgba(74,222,128,.14);color:var(--good)}
+.spam-score.suspicious{background:rgba(251,191,36,.14);color:var(--capture)}
+.spam-score.spam{background:rgba(248,113,113,.16);color:var(--bad)}
+.spam-head .why{flex:1;font-size:12.5px;color:var(--muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.spam-head .engine{font:10.5px var(--mono);color:var(--dim);flex:none}
+.spam-rules{border-top:1px solid var(--line);display:none}
+.spam.open .spam-rules{display:block}
+.spam-rule{display:flex;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);
+  font-size:12px;align-items:baseline}
+.spam-rule:last-child{border-bottom:0}
+.spam-rule b{font:11.5px var(--mono);color:var(--text);min-width:44px;text-align:right;flex:none}
+.spam-rule code{font:11.5px var(--mono);color:var(--accent);flex:none;min-width:170px}
+.spam-rule span{color:var(--muted)}
+
+/* ---------------------------------------------------------------- preview */
+.preview{margin-top:2px}
+.preview-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0;
+  border-bottom:0}
+.preview-bar select{background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);
+  border-radius:7px;padding:5px 8px;font:12px var(--sans);outline:none;cursor:pointer}
+.preview-bar .dims{font:11px var(--mono);color:var(--dim);white-space:nowrap}
+.preview-bar .grow{flex:1}
+.zoom{display:flex;align-items:center;gap:4px}
+.zoom button{width:22px;height:22px;border-radius:6px;border:1px solid var(--line-2);
+  color:var(--muted);font-size:12px;line-height:1;display:grid;place-items:center}
+.zoom button:hover{border-color:var(--accent);color:var(--accent)}
+.zoom span{font:11px var(--mono);color:var(--dim);min-width:34px;text-align:center}
+.stage{background:var(--panel-2);border:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius);
+  padding:18px;overflow:auto;display:flex;justify-content:center;align-items:flex-start;
+  max-height:min(72vh,900px)}
+.device{background:#fff;border-radius:10px;box-shadow:0 8px 40px -12px rgba(0,0,0,.55);
+  transform-origin:top center;flex:none;overflow:hidden;border:1px solid var(--line-2)}
+.device iframe{display:block;border:0;width:100%;height:100%;background:#fff}
+
 /* ---------------------------------------------------------------- composer */
 .sheet{position:fixed;inset:0;background:rgba(4,6,10,.62);backdrop-filter:blur(3px);
   display:none;place-items:center;z-index:40;padding:24px}
@@ -466,17 +507,25 @@ function renderReader(message){
       ${message.in_reply_to ? `<dt>In-Reply-To</dt><dd>${esc(message.in_reply_to)}</dd>` : ""}
       <dt>Thread</dt><dd>${references.length + 1} message${references.length ? "s" : ""}, depth ${message.depth}</dd>
     </dl></div>
+    <div id="spam-slot"></div>
     ${chain ? `<h3 class="section-label">References chain</h3>${chain}` : ""}
     <div class="bar" style="border:0;padding:0 0 10px;min-height:0">
       <button class="pill on" data-view="text">Text</button>
       ${message.html ? '<button class="pill" data-view="html">HTML</button>' : ""}
       <button class="pill" data-view="raw">Raw</button>
+      <button class="pill" id="save-eml" title="Download the message as .eml">.eml</button>
       <span style="flex:1"></span>
       <button class="pill" id="reply">↩ Reply</button>
       <button class="pill" id="reply-all">Reply all</button>
       <button class="pill" id="seen">${message.seen ? "Mark unread" : "Mark read"}</button>
     </div>
     <div class="body" id="body"><pre>${quoted}</pre></div></div>`;
+
+  loadSpamScore(message);
+
+  $("save-eml").onclick = () =>
+    download(`/messages/${encodeURIComponent(state.user)}/${message.uid}/eml`,
+             `message-${message.uid}.eml`);
 
   $("reply").onclick = () => openComposer({mode:"reply", message});
   $("reply-all").onclick = () => openComposer({mode:"reply", message, replyAll:true});
@@ -495,13 +544,212 @@ function renderReader(message){
     button.classList.add("on");
     const view = button.dataset.view;
     if(view === "text") $("body").innerHTML = `<pre>${quoted}</pre>`;
-    if(view === "html") $("body").innerHTML = `<iframe sandbox srcdoc="${esc(message.html)}"></iframe>`;
+    if(view === "html"){
+      $("body").outerHTML = `<div class="body" id="body" style="padding:0;border:0;background:none">${previewMarkup(message)}</div>`;
+      wirePreview(message);
+    }
     if(view === "raw"){
       const raw = await (await fetch(
         `/messages/${encodeURIComponent(state.user)}/${message.uid}/raw`)).text();
       $("body").innerHTML = `<pre>${esc(raw)}</pre>`;
     }
   });
+}
+
+/* ------------------------------------------------------------- spam */
+async function loadSpamScore(message){
+  const slot = $("spam-slot");
+  if(!slot) return;
+  try{
+    const result = await api(
+      `/messages/${encodeURIComponent(state.user)}/${message.uid}/spam`);
+    const rules = result.hits.map(hit => `<div class="spam-rule">
+        <b>${hit.weight > 0 ? "+" : ""}${esc(hit.weight)}</b>
+        <code>${esc(hit.rule)}</code>
+        <span>${esc(hit.description)}</span>
+      </div>`).join("");
+
+    slot.innerHTML = `<div class="spam" id="spam-box">
+      <div class="spam-head" id="spam-toggle">
+        <span class="spam-score ${esc(result.verdict)}">${esc(result.score)}</span>
+        <span class="why">${esc(result.summary)}</span>
+        <span class="engine">${esc(result.engine)}${result.hits.length ? " · click for detail" : ""}</span>
+      </div>
+      ${rules ? `<div class="spam-rules">${rules}</div>` : ""}
+    </div>`;
+
+    if(rules){
+      $("spam-toggle").onclick = () => $("spam-box").classList.toggle("open");
+    }
+  }catch{
+    slot.innerHTML = "";     // scoring is a nicety; never block reading the mail
+  }
+}
+
+/* ------------------------------------------------------------- preview */
+// Widths that actually matter: real phone and tablet viewports, plus the
+// three client widths most email breaks at.
+const DEVICES = [
+  {group:"Mobile",       name:"iPhone SE",         w:375,  h:667},
+  {group:"Mobile",       name:"iPhone 15",         w:393,  h:852},
+  {group:"Mobile",       name:"iPhone 15 Pro Max", w:430,  h:932},
+  {group:"Mobile",       name:"Pixel 8",           w:412,  h:915},
+  {group:"Mobile",       name:"Galaxy S23",        w:360,  h:780},
+  {group:"Tablet",       name:"iPad mini",         w:768,  h:1024},
+  {group:"Tablet",       name:'iPad Pro 11"',      w:834,  h:1194},
+  {group:"Tablet",       name:'iPad Pro 12.9"',    w:1024, h:1366},
+  {group:"Desktop",      name:"Laptop",            w:1280, h:800},
+  {group:"Desktop",      name:"Desktop",           w:1440, h:900},
+  {group:"Email client", name:"Outlook (600)",     w:600,  h:900},
+  {group:"Email client", name:"Gmail web (640)",   w:640,  h:900},
+  {group:"Email client", name:"Apple Mail (700)",  w:700,  h:900},
+];
+
+const preview = {
+  device: localStorage.getItem("device") || "iPhone 15",
+  zoom: parseFloat(localStorage.getItem("zoom") || "1"),
+};
+
+function deviceByName(name){
+  return DEVICES.find(d => d.name === name) || DEVICES[1];
+}
+
+function previewMarkup(message){
+  const groups = [...new Set(DEVICES.map(d => d.group))];
+  const options = groups.map(group =>
+    `<optgroup label="${esc(group)}">` +
+    DEVICES.filter(d => d.group === group).map(d =>
+      `<option value="${esc(d.name)}" ${d.name === preview.device ? "selected" : ""}>` +
+      `${esc(d.name)} — ${d.w}×${d.h}</option>`).join("") +
+    `</optgroup>`).join("");
+
+  return `<div class="preview">
+    <div class="preview-bar">
+      <select id="device">${options}</select>
+      <span class="dims" id="dims"></span>
+      <span class="grow"></span>
+      <span class="zoom">
+        <button id="zoom-out" title="Zoom out">−</button>
+        <span id="zoom-level"></span>
+        <button id="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-fit" title="Fit to width" style="width:auto;padding:0 7px">fit</button>
+      </span>
+      <button class="pill" id="save-png" title="Save what you see as a PNG">Save PNG</button>
+      <button class="pill" id="save-html" title="Download the HTML part">Save HTML</button>
+    </div>
+    <div class="stage" id="stage">
+      <div class="device" id="device-frame">
+        <iframe id="preview-frame" sandbox="allow-same-origin"
+                src="/messages/${encodeURIComponent(state.user)}/${message.uid}/html"
+                title="Email preview"></iframe>
+      </div>
+    </div>
+  </div>`;
+}
+
+function applyDevice(){
+  const device = deviceByName(preview.device);
+  const frame = $("device-frame");
+  if(!frame) return;
+  frame.style.width = device.w + "px";
+  frame.style.height = device.h + "px";
+  frame.style.transform = `scale(${preview.zoom})`;
+  // The scaled box still reserves its unscaled size, so pull the stage in.
+  frame.style.marginBottom = `${-device.h * (1 - preview.zoom)}px`;
+  $("dims").textContent = `${device.w} × ${device.h}`;
+  $("zoom-level").textContent = Math.round(preview.zoom * 100) + "%";
+  localStorage.setItem("device", preview.device);
+  localStorage.setItem("zoom", String(preview.zoom));
+}
+
+function fitPreview(){
+  const device = deviceByName(preview.device);
+  const stage = $("stage");
+  if(!stage) return;
+  const available = stage.clientWidth - 36;
+  preview.zoom = Math.min(1, Math.max(0.25, available / device.w));
+  applyDevice();
+}
+
+/** Rasterise the previewed email to a PNG, entirely in the browser.
+ *  The HTML is re-serialised as XHTML so it is valid inside <foreignObject>;
+ *  email HTML is full of unclosed tags that would otherwise fail to parse. */
+async function savePreviewPng(message){
+  const device = deviceByName(preview.device);
+  try{
+    const response = await fetch(
+      `/messages/${encodeURIComponent(state.user)}/${message.uid}/html`);
+    const html = await response.text();
+
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const body = parsed.body;
+    const height = Math.max(device.h,
+      $("preview-frame")?.contentDocument?.body?.scrollHeight || device.h);
+    const serialised = new XMLSerializer().serializeToString(body);
+    const inner = serialised.replace(/^<body[^>]*>/, "").replace(/<\/body>$/, "");
+    const style = body.getAttribute("style") || "";
+
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${device.w}" height="${height}">` +
+      `<foreignObject width="100%" height="100%">` +
+      `<div xmlns="http://www.w3.org/1999/xhtml" style="${esc(style)}">${inner}</div>` +
+      `</foreignObject></svg>`;
+
+    const image = new Image();
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("the HTML could not be rasterised"));
+      image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = device.w * ratio;
+    canvas.height = height * ratio;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.scale(ratio, ratio);
+    context.drawImage(image, 0, 0);
+
+    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+    const slug = (message.subject || "message").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "message";
+    download(URL.createObjectURL(blob),
+             `${slug}-${device.name.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}.png`);
+    toast(`Saved ${device.w}×${height} PNG`);
+  }catch(err){
+    toast("Could not rasterise — saving the HTML instead");
+    saveHtml(message);
+  }
+}
+
+function download(url, filename){
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+async function saveHtml(message){
+  const response = await fetch(
+    `/messages/${encodeURIComponent(state.user)}/${message.uid}/html`);
+  const blob = new Blob([await response.text()], {type: "text/html"});
+  download(URL.createObjectURL(blob), `message-${message.uid}.html`);
+}
+
+function wirePreview(message){
+  applyDevice();
+  $("device").onchange = (event) => { preview.device = event.target.value; applyDevice(); };
+  $("zoom-in").onclick = () => { preview.zoom = Math.min(2, preview.zoom + 0.1); applyDevice(); };
+  $("zoom-out").onclick = () => { preview.zoom = Math.max(0.25, preview.zoom - 0.1); applyDevice(); };
+  $("zoom-fit").onclick = fitPreview;
+  $("save-png").onclick = () => savePreviewPng(message);
+  $("save-html").onclick = () => saveHtml(message);
+  $("preview-frame").onload = () => { if(preview.zoom === 1) fitPreview(); };
 }
 
 /* ------------------------------------------------------------- composer */

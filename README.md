@@ -109,31 +109,47 @@ position in the chain:
 
 ![Threads](docs/screenshots/threads.png)
 
-### 2. From your test suite, over REST
+### 2. From your test suite
 
 ```sh
-# send
-curl -sX POST localhost:8080/send -H 'content-type: application/json' -d '{
-  "from": "alice", "to": "bob", "subject": "Invoice #42", "text": "Any questions?"
-}'
-
-# wait for bob to receive it — long-polls, so no sleep() in your tests
-curl -sX POST localhost:8080/wait -H 'content-type: application/json' -d '{
-  "user": "bob", "subject_contains": "Invoice #42", "timeout": 30
-}'
-
-# reply, with In-Reply-To / References / "Re:" handled for you
-curl -sX POST localhost:8080/reply -H 'content-type: application/json' -d '{
-  "user": "bob", "message_id": "<...>", "text": "Yes — when is it due?"
-}'
+pip install tahidromos-client
 ```
 
-Or build an entire thread in one call:
+The fixtures register themselves — no conftest wiring:
+
+```python
+def test_signup_sends_a_confirmation(inbox, client):
+    client.post("/register", json={"email": inbox.address})
+
+    message = inbox.wait(subject_contains="Confirm your address")
+
+    assert message.link.startswith("https://")   # the magic link
+    assert message.code is not None              # the one-time code
+```
+
+`inbox` is a mailbox created for that test alone and deleted afterwards, so
+parallel workers cannot read each other's mail. `inbox.wait()` long-polls the
+server, so **no test ever needs `sleep()`** — the two usual causes of a flaky
+email test, both gone.
+
+Testing that your app handles an *incoming* reply:
+
+```python
+def test_we_handle_an_incoming_reply(inbox, echo_bot):
+    sent = inbox.send(to=echo_bot, subject="Ticket #42", text="Is this fixed?")
+
+    reply = inbox.wait(in_reply_to=sent["message_id"])
+    assert reply.subject == "Re: Ticket #42"
+
+    inbox.reply(reply, "Thanks, closing it.")     # reply to the reply
+```
+
+Or drive it over plain HTTP from any language:
 
 ```sh
-curl -sX POST localhost:8080/conversation -H 'content-type: application/json' -d '{
-  "participants": ["alice", "bob"], "subject": "Standup", "turns": 8
-}'
+curl -sX POST localhost:8080/inboxes -d '{"prefix":"signup","run_id":"ci-42"}'
+curl -sX POST localhost:8080/wait    -d '{"user":"signup-a1b2c3@tahidromos.test","has_code":true}'
+curl -sX DELETE 'localhost:8080/inboxes?run_id=ci-42'      # teardown
 ```
 
 ### 3. Automatically, with the echo bots
@@ -155,62 +171,155 @@ echo  replied depth=3 to=echo2  subject='Re: ping pong'
 echo2 replied depth=8 to=echo   subject='Re: ping pong'   ← stops at the limit
 ```
 
-The bots are a thread inside the same process — there is no extra service to
-run. Turn them off with `BOT_ENABLED=false`.
+## Magic links and one-time codes
 
-## One server, many apps
+Every message arrives with the parts an end-to-end test actually asserts on,
+already extracted:
 
-Instead of a mail sink per docker-compose file, give every app its own domain,
-its own SMTP credentials and its own mailboxes. Drop a file in `tahidromos.d/`:
+| Field | What it holds |
+| --- | --- |
+| `stripped_text` | The body with the quoted thread and signature removed |
+| `link` · `links` | The first link, and all of them |
+| `code` | The one-time code, if the message has one |
 
-```yaml
-default_password: password
+The extraction is careful about the things that trip up a naive regex: a
+`?token=abc123` inside a URL is not a one-time code, `Your code is 483920`
+is one even though a word sits between the label and the digits, and an
+HTML-only message still yields both.
 
-apps:
-  shop:
-    domain: shop.test
-    smtp:
-      username: shop
-      password: shop-secret
-    mailboxes:
-      - orders
-      - customer
-      - name: echo
-        bot: true
+## Email templates
 
-  crm:
-    domain: crm.test
-    smtp: { username: crm, password: crm-secret }
-    mailboxes:
-      sales:
-        description: Inbound leads
-      agent:
-        password: agent-only-password
+Eight production-shaped templates ship with the server — table layouts,
+inline styles, preheaders, a plain-text alternative for each:
+
+`welcome` · `otp` · `password_reset` · `receipt` · `digest` · `alert` ·
+`invite` · `verify_email`
+
+```sh
+curl -sX POST localhost:8080/templates -H 'content-type: application/json' -d '{
+  "name": "receipt", "to": "alice", "context": {"name": "Alice"}
+}'
 ```
 
-Each app then authenticates with its own credentials and can send as any of its
-own addresses:
+Anything in `context` overrides the defaults, and values are HTML-escaped, so
+a template cannot be injected through its own data.
 
-```env
-# the shop app
-SMTP_USER=shop@shop.test
-SMTP_PASSWORD=shop-secret
+### Previewing at real device sizes
+
+Open the HTML tab on any message and pick a device. Thirteen presets: five
+phones, three tablets, two desktops, and the three widths email actually
+breaks at — Outlook's 600, Gmail's 640, Apple Mail's 700.
+
+![Device preview](docs/screenshots/device-preview.png)
+
+**Save PNG** rasterises exactly what you see, at the selected width, entirely
+in the browser. **Save HTML** and **.eml** download the parts. Handy for
+attaching a render to a pull request, or diffing a template against last week.
+
+### Authoring in React Email
+
+Templates are plain HTML files, so you can edit them directly. If you would
+rather write components, `templates/react-email/` is a full
+[React Email](https://react.email) project whose export writes into the same
+directory:
+
+```sh
+cd templates/react-email
+npm install
+npm run dev        # live preview at :3030 while you edit
+npm run export     # write the HTML the server serves
 ```
 
-The sidebar groups mailboxes by app, shows each app's credentials with a copy
-button, and carries a live unread badge per mailbox and per app — so you can
-see at a glance what has actually been delivered, and to whom.
+The components keep `{{ handlebars }}` placeholders, so React Email is the
+design tool and the server still does the data binding. `invite` and
+`verify_email` are built this way; the other six are handwritten. Both end up
+as the same thing.
+
+## Spam scoring
+
+Every message can be scored, with the rules that fired and why:
+
+```sh
+curl -s localhost:8080/messages/alice/7/spam
+```
+
+```json
+{
+  "engine": "builtin", "score": 8.5, "verdict": "spam",
+  "hits": [
+    {"rule": "FROM_DISPLAY_SPOOF", "weight": 3.0,
+     "description": "Display name shows 'support@bank.test' but the address is 'attacker@evil.test'"},
+    {"rule": "SUBJECT_ALL_CAPS", "weight": 1.5, "description": "Subject is mostly capitals"},
+    {"rule": "URL_SHORTENER", "weight": 1.2, "description": "Link through a shortener (bit.ly)"}
+  ]
+}
+```
+
+The built-in scorer needs nothing installed and covers the own-goals worth
+catching: shouting subjects, display-name spoofing, links to bare IPs, hidden
+keyword stuffing, bulk mail with no `List-Unsubscribe`, executable
+attachments. Every template that ships here scores **0** — a scorer that
+flags good mail is worse than no scorer, and there is a test asserting it.
+
+For a verdict closer to production, run [Rspamd](https://rspamd.com)
+alongside — it is a real filter, actively developed:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.rspamd.yml up -d
+```
+
+`/spam` then answers from Rspamd instead. Nothing else changes.
+
+## Inbound webhooks, without a tunnel
+
+Postmark, SendGrid and Mailgun all POST incoming mail at your application.
+Testing that normally means a public endpoint and an ngrok tunnel, because
+the usual dev mail tools cannot receive mail at all.
+
+Here delivery is local, so tahidromos can just POST the same shape at you:
+
+```sh
+INBOUND_WEBHOOK_URL=http://host.docker.internal:3000/webhooks/inbound \
+INBOUND_WEBHOOK_FORMAT=postmark \
+docker compose up -d
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `INBOUND_WEBHOOK_URL` | Where to POST. Unset means the feature is off |
+| `INBOUND_WEBHOOK_FORMAT` | `postmark` · `sendgrid` · `mailgun` · `raw` |
+| `INBOUND_WEBHOOK_ONLY` | Regex — only POST for matching recipients |
+| `INBOUND_WEBHOOK_SECRET` | Sent as `X-Tahidromos-Signature` |
+
+The Postmark shape includes `MailboxHash` (so `support+ticket42@` gives you
+`ticket42`) and `StrippedTextReply`; Mailgun gets `stripped-text`. Failed
+POSTs retry with backoff, and `/webhook` reports what happened.
+
+## Awkward messages, on demand
+
+Ten canned shapes that are tedious to build by hand and break naive parsers:
+
+```sh
+curl -sX POST localhost:8080/scenarios -d '{"name":"bounce","to":"alice","seed":42}'
+```
+
+`bounce` (a real RFC 3464 report) · `newsletter` (List-Unsubscribe + HTML) ·
+`html_only` · `otp` · `deep_reply` (three levels of quoting) · `attachment` ·
+`unicode` · `auto_reply` · `signed` (DKIM/SPF/DMARC headers) · `large`
+
+With a `seed` the bytes are identical every run, so they work as snapshot
+fixtures.
 
 ## Nothing escapes
 
-Mail addressed outside the local domains is never sent onward. The recipient is
-rewritten to the `captured` mailbox while the original `To:` header is left
+Mail addressed outside the local domains is never sent onward. The recipient
+is rewritten to the `captured` mailbox while the original `To:` header is left
 untouched, so you can still see exactly who it was meant for.
 
 ![Captured mail](docs/screenshots/captured.png)
 
-If your app accidentally mails a real customer address in development, you find
-it here and nowhere else.
+If your app accidentally mails a real customer address in development, you
+find it here and nowhere else.
 
 ## REST API
 
@@ -220,23 +329,60 @@ Interactive docs at <http://localhost:8080/docs>.
 | --- | --- | --- |
 | `GET` | `/health` · `/config` · `/apps` | Status, connection details, app config |
 | `GET` | `/overview` | Every app and mailbox with unread/total counts |
-| `GET` `POST` | `/accounts` | List mailboxes · create one on demand |
-| `GET` | `/messages/{user}` | List messages (`?unseen=true`, `?mailbox=Sent`) |
-| `GET` | `/messages/{user}/{uid}` · `/raw` | One message, parsed or as raw RFC 5322 |
+| `POST` `DELETE` | `/inboxes` | Throwaway mailbox · tear down a whole run |
+| `GET` `POST` | `/accounts` | List mailboxes · create a named one |
+| `GET` | `/messages/{user}` | List (`?unseen=true`, `?mailbox=Sent`) |
+| `GET` | `/messages/{user}/{uid}` | One message, parsed, with links and code |
+| `GET` | `…/raw` · `…/html` · `…/eml` | The source, the HTML part, a download |
+| `GET` | `…/spam` | Score it, with the rules that fired |
 | `PATCH` | `/messages/{user}/{uid}` | Mark read or unread |
 | `DELETE` | `/messages/{user}` | Empty a mailbox between test cases |
-| `GET` | `/threads/{user}` | Messages grouped into threads by `References` |
-| `POST` | `/send` | Send (auto-creates unknown local mailboxes) |
-| `POST` | `/reply` | Reply, headers handled for you |
+| `GET` | `/threads/{user}` | Grouped by `References` |
+| `POST` | `/send` · `/reply` | Send · reply with headers handled for you |
 | `POST` | `/wait` | Block until a matching message arrives |
+| `GET` `POST` | `/templates` | List · render and send |
+| `GET` `POST` | `/templates/{name}/preview` | Rendered HTML, without sending |
+| `GET` `POST` | `/scenarios` | List · deliver a canned message |
+| `GET` `POST` | `/spam` | Engines available · score anything |
+| `POST` | `/parse` | Strip quotes, find links and codes |
 | `POST` | `/conversation` | Generate a real multi-turn thread |
+| `GET` | `/webhook` | Inbound webhook status |
 
 Reading a message never changes its flags — the UI fetches with `BODY.PEEK[]` —
 so browsing a mailbox cannot perturb a test that is waiting on an unread count.
 
+## In CI
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mail:
+        image: ghcr.io/pamfilico/tahidromos
+        ports: ["1025:25", "1587:587", "1143:143", "8080:8080"]
+        options: >-
+          --health-cmd "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/health')\""
+          --health-interval 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install tahidromos-client pytest
+      - run: pytest        # the fixtures find it at localhost:8080
+```
+
+Nothing to install, nothing to configure, and the service is healthy before
+the first test runs.
+
 ## Configuration
 
 Every setting has a working default.
+
+**Nothing here is required.** Every feature above — templates, spam scoring,
+scenarios, disposable inboxes, device previews, the echo bots — works with the
+zero-configuration `docker run`. The only two features that need a variable are
+the ones that must know about something outside the container: the inbound
+webhook (where to POST) and Rspamd (where it lives). Both say so when they are
+off, and both are one variable.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -250,6 +396,9 @@ Every setting has a working default.
 | `BOT_MODE` | `echo` | `echo` · `mirror` · `ack` · `counter` |
 | `BOT_MAX_DEPTH` | `8` | Where a bot-to-bot chain stops |
 | `ENABLE_TLS` | `true` | Generate a self-signed cert and open 465/993 |
+| `INBOUND_WEBHOOK_URL` | *(off)* | POST every delivery at your app |
+| `INBOUND_WEBHOOK_FORMAT` | `postmark` | `postmark` · `sendgrid` · `mailgun` · `raw` |
+| `RSPAMD_URL` | *(off)* | Score with Rspamd instead of the built-in rules |
 
 Because unknown local addresses are created on first delivery, random
 per-test addresses like `user-8f21a@tahidromos.test` just work.
@@ -263,11 +412,12 @@ The UI follows whichever you pick; the choice is remembered.
 ## Development
 
 ```sh
-make dev      # build the image from this checkout and run it
-make test     # run the whole suite against the running server
-make seed     # fill it with realistic conversations
+make dev        # build the image from this checkout and run it
+make test       # run the whole suite against the running server
+make seed       # fill it with realistic conversations and templates
+make templates  # re-export the React Email templates
 make logs
-make clean    # delete every mailbox and message
+make clean      # delete every mailbox and message
 ```
 
 `make help` lists everything.
@@ -279,13 +429,19 @@ The suite is deliberately written against plain `smtplib`, `imaplib` and
 rather than that the helpers agree with themselves.
 
 ```
-tests/test_delivery.py    delivery, CC, plus-addressing, TLS, capture
-tests/test_threading.py   replies, replies to replies, 10-deep chains
-tests/test_api.py         the REST harness
-tests/test_multiapp.py    per-app domains, credentials, isolation, badges
-tests/test_echobot.py     auto-responders and bot-to-bot threading
-tests/test_ui.py          the mailbox browser and its data
+tests/test_delivery.py             delivery, CC, plus-addressing, TLS, capture
+tests/test_threading.py            replies, replies to replies, 10-deep chains
+tests/test_api.py                  the REST harness
+tests/test_multiapp.py             per-app domains, credentials, isolation
+tests/test_echobot.py              auto-responders and bot-to-bot threading
+tests/test_ui.py                   the mailbox browser and its data
+tests/test_templates.py            all eight templates render and deliver
+tests/test_spam.py                 true positives, and zero false positives
+tests/test_inbound_and_scenarios.py inboxes, scenarios, extraction, webhooks
+tests/test_client_fixtures.py      the pytest fixtures users actually write with
 ```
+
+138 tests, about a minute.
 
 ### What is inside
 
@@ -299,9 +455,16 @@ tests/test_ui.py          the mailbox browser and its data
 | `tahidromos/bot.py` | Auto-responders |
 | `tahidromos/config.py` | Multi-app configuration |
 | `tahidromos/api.py` | REST API and the mailbox browser |
+| `tahidromos/emailtemplates.py` | Template rendering, no template engine needed |
+| `tahidromos/extract.py` | Quote stripping, links, one-time codes |
+| `tahidromos/scenarios.py` | Ten reproducible awkward messages |
+| `tahidromos/spam.py` | Heuristic scoring, and the Rspamd client |
+| `tahidromos/webhook.py` | Provider-shaped inbound webhooks |
 
 Four runtime dependencies: FastAPI, uvicorn, PyYAML and cryptography. The mail
-servers themselves use only the standard library.
+servers, the spam scorer, the template renderer and the extraction all use only
+the standard library. Node is needed only if you choose to author templates in
+React Email, and never at runtime.
 
 ## Not for production
 

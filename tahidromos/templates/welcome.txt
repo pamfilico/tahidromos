@@ -1,0 +1,15 @@
+Welcome, {{ name }}.
+
+Your {{ product }} account is ready. Here is the one thing worth doing first:
+{{ first_step }}
+
+{{ cta_label }}: {{ cta_url }}
+
+Your details
+  {{ email }}
+  Plan: {{ plan }}
+
+Not expecting this? Let us know at {{ support_url }} and we will close the account.
+
+{{ company }}
+Unsubscribe: {{ unsubscribe_url }}

@@ -125,6 +125,10 @@ def main() -> int:
     parser.add_argument("--imap-port", type=int, default=1143)
     parser.add_argument("--bot", action="store_true",
                         help="Also poke the auto-responder so a bot thread appears")
+    parser.add_argument("--templates", action="store_true",
+                        help="Also deliver one of every template, for the preview")
+    parser.add_argument("--api", default="http://localhost:8080",
+                        help="Base URL of the REST API [http://localhost:8080]")
     args = parser.parse_args()
 
     sender = Sender(args.smtp_host, args.smtp_port)
@@ -147,6 +151,23 @@ def main() -> int:
     for smtp_user, password, to, subject, body in EXTERNAL:
         sender.send(smtp_user, password, smtp_user, to, subject, body)
         print(f"  captured → {to:24} {subject}")
+
+    if args.templates:
+        import json as _json
+        import urllib.request as _request
+
+        for name in ("welcome", "otp", "password_reset", "receipt",
+                     "digest", "alert", "invite", "verify_email"):
+            payload = _json.dumps({"name": name, "to": "alice"}).encode()
+            call = _request.Request(f"{args.api}/templates", data=payload,
+                                    headers={"content-type": "application/json"},
+                                    method="POST")
+            try:
+                with _request.urlopen(call, timeout=30) as response:
+                    subject = _json.loads(response.read())["subject"]
+                print(f"  template  → alice{'':18} {subject}")
+            except Exception as exc:
+                print(f"  template  → {name}: could not send ({exc})")
 
     if args.bot:
         sender.send("app@tahidromos.test", "password", "alice@tahidromos.test",

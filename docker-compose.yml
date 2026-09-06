@@ -29,6 +29,20 @@ services:
       BOT_POLL: ${BOT_POLL:-1}
       BOT_REPLY_TO_BOTS: ${BOT_REPLY_TO_BOTS:-true}
 
+      # Inbound-parse webhook. Leave INBOUND_WEBHOOK_URL empty and nothing
+      # happens; set it and every delivery is POSTed at your app shaped like
+      # Postmark / SendGrid / Mailgun inbound.
+      INBOUND_WEBHOOK_URL: ${INBOUND_WEBHOOK_URL:-}
+      INBOUND_WEBHOOK_FORMAT: ${INBOUND_WEBHOOK_FORMAT:-postmark}
+      INBOUND_WEBHOOK_SECRET: ${INBOUND_WEBHOOK_SECRET:-}
+      INBOUND_WEBHOOK_ONLY: ${INBOUND_WEBHOOK_ONLY:-}
+      INBOUND_WEBHOOK_RETRIES: ${INBOUND_WEBHOOK_RETRIES:-3}
+
+      # Optional: score with rspamd instead of the built-in heuristics.
+      # See the "Spam scoring" section of the README for a compose profile.
+      RSPAMD_URL: ${RSPAMD_URL:-}
+      RSPAMD_PASSWORD: ${RSPAMD_PASSWORD:-}
+
       ENABLE_TLS: ${ENABLE_TLS:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
@@ -38,6 +52,8 @@ services:
       - "${PORT_IMAP:-1143}:143"
       - "${PORT_IMAPS:-1993}:993"
       - "${PORT_HTTP:-8080}:8080"        # inbox browser + REST API
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # so the webhook can reach your app
     volumes:
       - tahidromos_data:/data
       # Drop *.yml here to run many apps on one instance. Optional.

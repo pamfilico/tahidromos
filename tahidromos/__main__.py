@@ -26,7 +26,9 @@ from .imap import ImapServer
 from .router import Router
 from .smtp import SmtpServer
 from .store import Store
+from .spam import Rspamd
 from .tls import build_context
+from .webhook import WebhookSender
 
 log = logging.getLogger("tahidromos")
 
@@ -74,6 +76,22 @@ async def serve() -> int:
 
     router = Router(store, config, auto_create=flag("MAIL_AUTO_CREATE", "true"))
 
+    # Optional: POST every delivery at your app, shaped like a provider's
+    # inbound-parse webhook. Off unless INBOUND_WEBHOOK_URL is set.
+    webhook = None
+    webhook_url = os.environ.get("INBOUND_WEBHOOK_URL", "").strip()
+    if webhook_url:
+        webhook = WebhookSender(
+            url=webhook_url,
+            fmt=os.environ.get("INBOUND_WEBHOOK_FORMAT", "postmark"),
+            secret=os.environ.get("INBOUND_WEBHOOK_SECRET", ""),
+            only=os.environ.get("INBOUND_WEBHOOK_ONLY", ""),
+            timeout=float(os.environ.get("INBOUND_WEBHOOK_TIMEOUT", "10")),
+            retries=number("INBOUND_WEBHOOK_RETRIES", "3"),
+        )
+        router.listeners.append(
+            lambda raw, envelope_to, mailbox, uid: webhook.deliver(raw, envelope_to, mailbox))
+
     host = os.environ.get("BIND_HOST", "0.0.0.0")
     tls_context = None
     if flag("ENABLE_TLS", "true"):
@@ -113,7 +131,13 @@ async def serve() -> int:
 
     # ------------------------------------------------------------ http
     http_port = number("HTTP_PORT", "8080")
-    api = create_app(store, router, config, started_at)
+    # Optional: score with Rspamd instead of the built-in heuristics.
+    rspamd = None
+    rspamd_url = os.environ.get("RSPAMD_URL", "").strip()
+    if rspamd_url:
+        rspamd = Rspamd(rspamd_url, password=os.environ.get("RSPAMD_PASSWORD", ""))
+
+    api = create_app(store, router, config, started_at, webhook, rspamd)
     http = uvicorn.Server(uvicorn.Config(api, host=host, port=http_port,
                                          log_level="warning", access_log=False))
     tasks.append(asyncio.create_task(http.serve()))
@@ -124,6 +148,9 @@ async def serve() -> int:
     log.info("mailboxes    %d", len(store.accounts()))
     log.info("auto-reply   %s", ", ".join(responder.addresses()) or "(none)")
     log.info("capture      %s", config.capture_address)
+    if webhook is not None:
+        log.info("inbound hook %s (%s)", webhook.url, webhook.fmt)
+    log.info("spam engine  %s", rspamd.url if rspamd else "built-in heuristics")
     log.info("http         http://localhost:%s", http_port)
     if config.sources:
         log.info("config       %s", ", ".join(config.sources))

@@ -1,0 +1,12 @@
+{{ headline }} — {{ period }}
+
+{{ intro }}
+
+{{#each articles}}[{{ tag }}] {{ title }}
+{{ excerpt }}
+{{ url }}
+
+{{/each}}You get this because you subscribed to {{ product }}.
+Unsubscribe: {{ unsubscribe_url }}
+
+{{ company }}

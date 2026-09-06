@@ -4,7 +4,7 @@ COMPOSE := docker compose
 DEV     := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 PY      := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
-.PHONY: help up dev down clean logs ps restart venv test test-fast smoke reply seed user accounts open run
+.PHONY: help up dev down clean logs ps restart venv test test-fast smoke reply seed templates user accounts open run
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -54,8 +54,11 @@ smoke: ## Send one mail and prove it arrived
 reply: ## Walk send -> reply -> reply-to-the-reply
 	$(PY) examples/reply_conversation.py --turns 6
 
-seed: ## Fill it with realistic conversations
-	$(PY) examples/seed_demo.py --bot
+seed: ## Fill it with realistic conversations and templates
+	$(PY) examples/seed_demo.py --bot --templates
+
+templates: ## Re-export the React Email templates to HTML
+	cd templates/react-email && npm install --silent && npm run export
 
 user: ## Create a mailbox: make user EMAIL=dana
 	@test -n "$(EMAIL)" || { echo "usage: make user EMAIL=dana"; exit 1; }

@@ -1,0 +1,22 @@
+{
+  "name": "tahidromos-react-email",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Author tahidromos templates in React Email and export them to plain HTML",
+  "type": "module",
+  "scripts": {
+    "dev": "email dev --dir emails --port 3030",
+    "export": "tsx export.jsx",
+    "check": "tsx export.jsx --check"
+  },
+  "dependencies": {
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "react-email": "3.0.4",
+    "tsx": "4.19.2"
+  }
+}

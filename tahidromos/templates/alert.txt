@@ -1,0 +1,11 @@
+[{{ severity }}] {{ title }}
+{{ fired_at }}
+
+{{ body }}
+
+{{#each facts}}  {{ label }}: {{ value }}
+{{/each}}
+Runbook: {{ runbook_url }}
+Silence 1h: {{ silence_url }}
+
+{{ company }} monitoring

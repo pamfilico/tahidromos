@@ -14,10 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
+from . import emailtemplates
+from . import extract
 from . import message as msg
+from . import scenarios as scenario_library
+from . import spam as spam_engine
 from .config import Config
 from .router import Router
 from .store import Store
@@ -51,16 +55,26 @@ class ReplyRequest(BaseModel):
 
 
 class WaitRequest(BaseModel):
+    """Block until a message matching every supplied filter arrives.
+
+    This exists so tests never need sleep(). Every filter is optional and
+    they are combined with AND.
+    """
     user: str
     mailbox: str = "INBOX"
     timeout: float = 30.0
     interval: float = 0.25
     subject_contains: str | None = None
     from_contains: str | None = None
+    to_contains: str | None = None
     text_contains: str | None = None
+    link_contains: str | None = None
+    has_code: bool = False
     message_id: str | None = None
     in_reply_to: str | None = None
+    thread_root: str | None = None
     unseen_only: bool = False
+    mark_seen: bool = False
 
 
 class AccountRequest(BaseModel):
@@ -75,18 +89,70 @@ class FlagRequest(BaseModel):
     seen: bool
 
 
+class InboxRequest(BaseModel):
+    """A throwaway mailbox, so parallel tests cannot collide."""
+    prefix: str = Field("test", max_length=40,
+                        description="Readable prefix for the generated address")
+    domain: str | None = Field(None, description="Defaults to the primary domain")
+    run_id: str | None = Field(None, description="Tag to group inboxes from one CI run")
+    password: str | None = None
+
+
+class SpamRequest(BaseModel):
+    """Score a message you supply, rather than one that was delivered."""
+    raw: str | None = Field(None, description="A full RFC 5322 message")
+    subject: str = ""
+    text: str = ""
+    html: str = ""
+    sender: str = Field("someone@example.test", alias="from")
+    engine: str = Field("auto", description="auto | builtin | rspamd")
+    model_config = {"populate_by_name": True}
+
+
+class ParseRequest(BaseModel):
+    text: str = ""
+    html: str = ""
+    keep_signature: bool = False
+
+
 class ConversationRequest(BaseModel):
     participants: list[str] = Field(..., min_length=2)
     subject: str = "Test conversation"
     turns: int = Field(4, ge=1, le=100)
     body_template: str = "Message {n} of the thread, from {sender}."
+    seed: int | None = Field(None, description="Same seed, same bodies")
+
+
+class TemplateRequest(BaseModel):
+    """Send a rendered template to a mailbox."""
+    name: str
+    to: str
+    sender: str | None = Field(None, alias="from")
+    subject: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict,
+                                    description="Values merged over the template defaults")
+    model_config = {"populate_by_name": True}
+
+
+class TemplatePreviewRequest(BaseModel):
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScenarioRequest(BaseModel):
+    """Deliver one of the canned awkward messages."""
+    name: str
+    to: str
+    seed: int | None = Field(None, description="Same seed, same bytes")
+    options: dict[str, Any] = Field(default_factory=dict,
+                                    description="Scenario options, e.g. {\"size_kb\": 64}")
 
 
 def bracket(message_id: str) -> str:
     return message_id if message_id.startswith("<") else f"<{message_id}>"
 
 
-def create_app(store: Store, router: Router, config: Config, started_at: float) -> FastAPI:
+def create_app(store: Store, router: Router, config: Config, started_at: float,
+               webhook=None, rspamd=None) -> FastAPI:
     app = FastAPI(
         title="tahidromos",
         version="1.0.0",
@@ -114,6 +180,15 @@ def create_app(store: Store, router: Router, config: Config, started_at: float) 
             created.append(address)
         return created
 
+    def enrich(found: dict) -> dict:
+        """Add the parsed body, links and one-time code to a stored message."""
+        parsed = msg.parse(found["raw"])
+        found["date"] = str(parsed.get("Date", ""))
+        found["text"] = msg.plain_body(parsed)
+        found["html"] = msg.html_body(parsed)
+        found.update(extract.summarize(found["text"], found["html"] or ""))
+        return found
+
     async def send_message(message, sender: str) -> str:
         await router.deliver(sender, msg.recipients(message), msg.to_bytes(message),
                              submitted_by=sender, peer="api")
@@ -125,7 +200,17 @@ def create_app(store: Store, router: Router, config: Config, started_at: float) 
     def health() -> dict[str, Any]:
         return {"status": "ok", "domain": config.primary_domain,
                 "uptime_seconds": round(time.time() - started_at, 1),
-                "delivered": router.delivered, "captured": router.captured}
+                "delivered": router.delivered, "captured": router.captured,
+                "mailboxes": len(store.accounts()),
+                "inbound_webhook": webhook.status() if webhook else {"enabled": False}}
+
+    @app.get("/webhook", tags=["meta"])
+    def webhook_status() -> dict[str, Any]:
+        """Whether the inbound-parse webhook is on, and how it is doing."""
+        if webhook is None:
+            return {"enabled": False,
+                    "hint": "set INBOUND_WEBHOOK_URL to POST every delivery at your app"}
+        return webhook.status()
 
     @app.get("/config", tags=["meta"])
     def configuration() -> dict[str, Any]:
@@ -188,6 +273,118 @@ def create_app(store: Store, router: Router, config: Config, started_at: float) 
         address = config.qualify(user)
         return {"address": address, "deleted": store.delete_account(address)}
 
+    # ---------------------------------------------------------- inboxes
+
+    @app.post("/inboxes", status_code=201, tags=["inboxes"])
+    def create_inbox(request: InboxRequest) -> dict[str, Any]:
+        """Create a throwaway mailbox with a unique address.
+
+        One inbox per test is the cure for the two classic causes of flaky
+        email tests: parallel runs sharing a mailbox, and assertions that
+        grab "the latest unread" belonging to somebody else's test.
+        """
+        import re as _re
+        import secrets
+
+        prefix = _re.sub(r"[^a-z0-9._-]+", "-", request.prefix.lower()).strip("-") or "test"
+        domain = (request.domain or config.primary_domain).lower()
+        address = f"{prefix}-{secrets.token_hex(5)}@{domain}"
+        password = request.password or config.default_password
+
+        store.create_account(address, password, app=request.run_id or "disposable",
+                             description=f"Disposable inbox ({request.run_id or 'no run id'})")
+        return {"address": address, "password": password, "run_id": request.run_id,
+                "smtp": {"host": config.hostname, "port": 587},
+                "imap": {"host": config.hostname, "port": 143}}
+
+    @app.delete("/inboxes/{address}", tags=["inboxes"])
+    def delete_inbox(address: str) -> dict[str, Any]:
+        """Delete one throwaway mailbox and everything in it."""
+        full = config.qualify(address)
+        return {"address": full, "deleted": store.delete_account(full)}
+
+    @app.delete("/inboxes", tags=["inboxes"])
+    def delete_run_inboxes(run_id: str = Query(..., min_length=1)) -> dict[str, Any]:
+        """Delete every inbox created with this run_id — CI teardown in one call."""
+        removed = []
+        for account in store.accounts():
+            if account["app"] == run_id:
+                if store.delete_account(account["address"]):
+                    removed.append(account["address"])
+        return {"run_id": run_id, "deleted": removed, "count": len(removed)}
+
+    # ---------------------------------------------------------- spam
+
+    def score_raw(raw: bytes, engine: str = "auto", recipient: str = "") -> dict:
+        """Score with Rspamd when it is configured and wanted, else built-in."""
+        if engine in ("auto", "rspamd") and rspamd is not None:
+            try:
+                return rspamd.check(raw, recipient=recipient)
+            except Exception as exc:
+                if engine == "rspamd":
+                    raise HTTPException(
+                        status_code=502, detail=f"rspamd is unreachable: {exc}") from None
+                # auto: fall back quietly, but say which engine answered
+                result = spam_engine.score_message(raw)
+                result["rspamd_error"] = str(exc)
+                return result
+        if engine == "rspamd":
+            raise HTTPException(
+                status_code=503,
+                detail="rspamd is not configured; set RSPAMD_URL to use it")
+        return spam_engine.score_message(raw)
+
+    @app.get("/messages/{user}/{uid}/spam", tags=["spam"])
+    def score_message(user: str, uid: str, mailbox: str = "INBOX",
+                      engine: str = Query("auto", pattern="^(auto|builtin|rspamd)$")
+                      ) -> dict[str, Any]:
+        """Score a delivered message, with the rules that fired."""
+        address = resolve(user)
+        raw = store.raw(address, int(uid), mailbox)
+        if raw is None:
+            raise HTTPException(status_code=404, detail=f"no message with uid {uid}")
+        return score_raw(raw, engine, recipient=address)
+
+    @app.post("/spam", tags=["spam"])
+    def score_arbitrary(request: SpamRequest) -> dict[str, Any]:
+        """Score a message you pass in, without delivering it first."""
+        if request.raw:
+            raw = request.raw.encode()
+        else:
+            built = msg.build(request.sender, ["someone@" + config.primary_domain],
+                              request.subject, request.text,
+                              html=request.html or None, domain=config.primary_domain)
+            raw = msg.to_bytes(built)
+        return score_raw(raw, request.engine)
+
+    @app.get("/spam", tags=["spam"])
+    def spam_engines() -> dict[str, Any]:
+        """Which scoring engines are available."""
+        return {
+            "builtin": {"available": True,
+                        "spam_at": spam_engine.SPAM_AT,
+                        "suspicious_at": spam_engine.SUSPICIOUS_AT},
+            "rspamd": {"available": rspamd is not None,
+                       "url": getattr(rspamd, "url", None),
+                       "hint": None if rspamd else
+                               "set RSPAMD_URL to score with rspamd instead"},
+        }
+
+    # ---------------------------------------------------------- parsing
+
+    @app.post("/parse", tags=["parsing"])
+    def parse_body(request: ParseRequest) -> dict[str, Any]:
+        """Strip quotes and signatures, and pull out links and one-time codes.
+
+        Exposed on its own so you can run it over mail that did not come
+        from here — the same logic the message endpoints apply.
+        """
+        return {
+            "stripped_text": extract.strip_quotes(request.text, request.keep_signature),
+            "links": extract.find_links(request.text, request.html),
+            "code": extract.find_code(request.text, request.html),
+        }
+
     # ---------------------------------------------------------- reading
 
     @app.get("/mailboxes/{user}", tags=["read"])
@@ -218,15 +415,35 @@ def create_app(store: Store, router: Router, config: Config, started_at: float) 
             raise HTTPException(status_code=422, detail="uid must be a number") from None
         if found is None:
             raise HTTPException(status_code=404, detail=f"no message with uid {uid}")
-        parsed = msg.parse(found["raw"])
-        found["date"] = str(parsed.get("Date", ""))
-        found["text"] = msg.plain_body(parsed)
-        found["html"] = msg.html_body(parsed)
-        return found
+        return enrich(found)
 
     @app.get("/messages/{user}/{uid}/raw", response_class=PlainTextResponse, tags=["read"])
     def message_raw(user: str, uid: str, mailbox: str = "INBOX") -> str:
         return message(user, uid, mailbox)["raw"]
+
+    @app.get("/messages/{user}/{uid}/html", response_class=HTMLResponse, tags=["read"])
+    def message_html(user: str, uid: str, mailbox: str = "INBOX") -> str:
+        """The HTML part on its own, so an iframe can render it at any width."""
+        found = message(user, uid, mailbox)
+        if not found.get("html"):
+            escaped = (found.get("text") or "").replace("&", "&amp;").replace("<", "&lt;")
+            return ("<!doctype html><meta charset=utf-8>"
+                    "<body style=\"margin:0;padding:20px;font:14px/1.6 ui-monospace,"
+                    "SFMono-Regular,Menlo,monospace;white-space:pre-wrap;\">"
+                    f"{escaped}</body>")
+        return found["html"]
+
+    @app.get("/messages/{user}/{uid}/eml", tags=["read"])
+    def message_eml(user: str, uid: str, mailbox: str = "INBOX") -> Response:
+        """Download the message as a .eml file."""
+        address = resolve(user)
+        raw = store.raw(address, int(uid), mailbox)
+        if raw is None:
+            raise HTTPException(status_code=404, detail=f"no message with uid {uid}")
+        return Response(
+            content=raw, media_type="message/rfc822",
+            headers={"content-disposition":
+                     f'attachment; filename="{address.split("@")[0]}-{uid}.eml"'})
 
     @app.patch("/messages/{user}/{uid}", tags=["read"])
     def set_flags(user: str, uid: str, request: FlagRequest,
@@ -332,31 +549,136 @@ def create_app(store: Store, router: Router, config: Config, started_at: float) 
                 return False
             if request.in_reply_to and (item["in_reply_to"] or "") != bracket(request.in_reply_to):
                 return False
-            if request.text_contains:
+            if request.thread_root and item["thread_root"] != bracket(request.thread_root):
+                return False
+            if request.to_contains and request.to_contains.lower() not in \
+                    (",".join(item["to"]) + "," + item["envelope_to"]).lower():
+                return False
+            if request.text_contains or request.link_contains or request.has_code:
                 raw = store.raw(address, int(item["uid"]), request.mailbox) or b""
-                if request.text_contains.lower() not in raw.decode("utf-8", "replace").lower():
+                body = raw.decode("utf-8", "replace")
+                if request.text_contains and request.text_contains.lower() not in body.lower():
                     return False
+                if request.link_contains or request.has_code:
+                    parsed = msg.parse(raw)
+                    text, html = msg.plain_body(parsed), msg.html_body(parsed) or ""
+                    if request.link_contains and not extract.find_link(
+                            text, html, request.link_contains):
+                        return False
+                    if request.has_code and not extract.find_code(text, html):
+                        return False
             return True
 
         deadline = time.monotonic() + request.timeout
         while True:
             for item in reversed(store.summaries(address, request.mailbox)):
                 if matches(item):
-                    return store.message(address, int(item["uid"]), request.mailbox)
+                    if request.mark_seen:
+                        store.set_flags(address, int(item["uid"]), add=["\\Seen"],
+                                        mailbox=request.mailbox)
+                    return enrich(store.message(address, int(item["uid"]), request.mailbox))
             if time.monotonic() >= deadline:
                 raise HTTPException(status_code=408,
                                     detail=f"no matching message within {request.timeout}s")
             await asyncio.sleep(request.interval)
+
+    # ---------------------------------------------------------- templates
+
+    @app.get("/templates", tags=["templates"])
+    def list_templates() -> dict[str, Any]:
+        """The email templates this server can render and send."""
+        return {"templates": emailtemplates.catalogue()}
+
+    @app.get("/templates/{name}/preview", response_class=HTMLResponse, tags=["templates"])
+    def preview_template(name: str) -> str:
+        """The rendered HTML on its own, for a browser or a screenshot tool."""
+        try:
+            return emailtemplates.render(name, {}, domain=config.primary_domain)["html"]
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"no template {name!r}") from None
+
+    @app.post("/templates/{name}/preview", tags=["templates"])
+    def preview_template_with_context(name: str, request: TemplatePreviewRequest) -> dict[str, Any]:
+        """Render with your own values, without sending anything."""
+        try:
+            return emailtemplates.render(name, request.context, domain=config.primary_domain)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"no template {name!r}") from None
+
+    @app.post("/templates", status_code=201, tags=["templates"])
+    async def send_template(request: TemplateRequest) -> dict[str, Any]:
+        """Render a template and deliver it, HTML and plain text together."""
+        try:
+            rendered = emailtemplates.render(request.name, request.context,
+                                             domain=config.primary_domain)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no template {request.name!r}; try one of "
+                       f"{[t['name'] for t in emailtemplates.catalogue()]}") from None
+
+        recipient = config.qualify(request.to)
+        sender = config.qualify(request.sender) if request.sender else rendered["from"]
+        ensure([sender, recipient])
+
+        built = msg.build(sender, [recipient], request.subject or rendered["subject"],
+                          rendered["text"], html=rendered["html"],
+                          domain=sender.split("@")[1])
+        message_id = await send_message(built, sender)
+        return {"template": request.name, "message_id": message_id, "from": sender,
+                "to": recipient, "subject": str(built["Subject"]),
+                "size": len(msg.to_bytes(built))}
+
+    @app.get("/scenarios", tags=["demo"])
+    def list_scenarios() -> dict[str, Any]:
+        """The canned messages you can have delivered."""
+        return {"scenarios": scenario_library.catalogue()}
+
+    @app.post("/scenarios", status_code=201, tags=["demo"])
+    async def deliver_scenario(request: ScenarioRequest) -> dict[str, Any]:
+        """Deliver a bounce, a newsletter, an HTML-only message, and so on.
+
+        These are the shapes that are tedious to build by hand and that break
+        naive parsers. With a seed the bytes are identical every run, so they
+        work as snapshot fixtures.
+        """
+        recipient = config.qualify(request.to)
+        ensure([recipient])
+        try:
+            built = scenario_library.build(
+                request.name, to=recipient, domain=config.primary_domain,
+                seed=request.seed, **request.options)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no scenario {request.name!r}; "
+                       f"try one of {[s['name'] for s in scenario_library.catalogue()]}"
+            ) from None
+        except TypeError as exc:
+            raise HTTPException(status_code=422, detail=f"bad options: {exc}") from None
+
+        sender = msg.addresses(built, "From")[0]
+        await router.deliver(sender, [recipient], msg.to_bytes(built), peer="scenario")
+        return {"scenario": request.name, "to": recipient, "from": sender,
+                "subject": str(built["Subject"]),
+                "message_id": str(built["Message-ID"]), "seed": request.seed,
+                "size": len(msg.to_bytes(built))}
 
     @app.post("/conversation", status_code=201, tags=["demo"])
     async def conversation(request: ConversationRequest) -> dict[str, Any]:
         """Build a real multi-turn thread, each turn an actual reply to the last."""
         people = [config.qualify(p) for p in request.participants]
         ensure(people)
+        rng = __import__("random").Random(request.seed) if request.seed is not None else None
+
+        def body(turn: int, speaker: str) -> str:
+            text = request.body_template.format(n=turn, sender=speaker)
+            if rng is not None:
+                text += f"\n\nnonce {rng.getrandbits(32):08x}"
+            return text
 
         opener = msg.build(people[0], [people[1]], request.subject,
-                           request.body_template.format(n=1, sender=people[0]),
-                           domain=people[0].split("@")[1])
+                           body(1, people[0]), domain=people[0].split("@")[1])
         last_id = await send_message(opener, people[0])
         trail = [{"n": 1, "from": people[0], "to": people[1],
                   "message_id": last_id, "depth": 0}]
@@ -376,8 +698,7 @@ def create_app(store: Store, router: Router, config: Config, started_at: float) 
                 raise HTTPException(status_code=504,
                                     detail=f"turn {turn}: {speaker} never received {last_id}")
 
-            built = msg.build_reply(msg.parse(found["raw"]),
-                                    request.body_template.format(n=turn, sender=speaker),
+            built = msg.build_reply(msg.parse(found["raw"]), body(turn, speaker),
                                     sender=speaker, quote=False,
                                     domain=speaker.split("@")[1])
             last_id = await send_message(built, speaker)

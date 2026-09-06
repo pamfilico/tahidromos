@@ -14,6 +14,7 @@ in `captured@…` and nowhere near the internet.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from email.utils import formatdate, make_msgid
@@ -120,7 +121,9 @@ class Router:
                 log.info("delivered %s -> %s (uid %s)", mail_from, target, uid)
             for listener in list(self.listeners):
                 try:
-                    listener(target, uid)
+                    result = listener(raw, recipient, target, uid)
+                    if asyncio.iscoroutine(result):
+                        await result
                 except Exception:
                     log.exception("delivery listener failed")
 

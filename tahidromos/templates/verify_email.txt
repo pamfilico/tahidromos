@@ -1,0 +1,14 @@
+📮 {{ product }}
+
+
+CONFIRM YOUR ADDRESS
+
+One click and {{ email }} is verified. The link is good for {{ expires_hours }} hours.
+
+Confirm {{ email }} {{ verify_url }}
+
+{{ verify_url }}
+
+If you did not create an account, ignore this — nothing happens until the link is used.
+
+{{ company }}

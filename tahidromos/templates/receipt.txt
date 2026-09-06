@@ -1,0 +1,13 @@
+Thanks, {{ name }}.
+
+Your order {{ order_id }} is confirmed and ships on {{ ship_date }}.
+
+{{#each items}}  {{ name }} x{{ qty }} — {{ price }}
+{{/each}}  Shipping — {{ shipping }}
+  Total — {{ total }}
+
+Track your order: {{ tracking_url }}
+
+Questions? Just reply to this message — a person reads it.
+
+{{ company }}

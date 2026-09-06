@@ -6,3 +6,5 @@ __pycache__/
 .env
 *.log
 .DS_Store
+node_modules/
+templates/react-email/.react-email/
