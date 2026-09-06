@@ -1,0 +1,20 @@
+{
+  "name": "@pamfilico/tahidromos",
+  "version": "1.0.0",
+  "description": "Client and Playwright helpers for tahidromos, the development mail server you can reply to",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": { "types": "./src/index.d.ts", "import": "./src/index.js" },
+    "./playwright": { "import": "./src/playwright.js" }
+  },
+  "files": ["src", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": ["email", "testing", "smtp", "imap", "playwright", "cypress", "otp", "magic-link"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/pamfilico/tahidromos" },
+  "engines": { "node": ">=18" }
+}

@@ -64,6 +64,9 @@ jobs:
       - name: Run the test suite
         run: pytest
 
+      - name: Run the JavaScript client tests
+        run: node --test clients/node/test/*.test.js
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color --tail 400

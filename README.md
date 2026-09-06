@@ -144,6 +144,30 @@ def test_we_handle_an_incoming_reply(inbox, echo_bot):
     inbox.reply(reply, "Thanks, closing it.")     # reply to the reply
 ```
 
+For JavaScript and TypeScript:
+
+```sh
+npm install --save-dev @pamfilico/tahidromos
+```
+
+```js
+import { test, expect } from "@pamfilico/tahidromos/playwright";
+
+test("a new user can sign in from the email", async ({ page, inbox }) => {
+  await page.goto("/signup");
+  await page.fill("#email", inbox.address);
+  await page.click("#register");
+
+  await page.goto(await inbox.waitForLink({ subjectContains: "Confirm" }));
+  await expect(page.locator("h1")).toHaveText("Welcome");
+});
+```
+
+Same idea: `inbox` belongs to that test, `waitForLink` long-polls. There are
+`waitForCode` and `waitFor` too, plus `signInWithMagicLink` and
+`enterOneTimeCode` for the two flows most apps share. Works in Cypress and
+Vitest as well — the Playwright part is optional.
+
 Or drive it over plain HTTP from any language:
 
 ```sh
@@ -460,6 +484,8 @@ tests/test_client_fixtures.py      the pytest fixtures users actually write with
 | `tahidromos/scenarios.py` | Ten reproducible awkward messages |
 | `tahidromos/spam.py` | Heuristic scoring, and the Rspamd client |
 | `tahidromos/webhook.py` | Provider-shaped inbound webhooks |
+| `clients/python/` | `tahidromos-client` — the pytest fixtures |
+| `clients/node/` | `@pamfilico/tahidromos` — Playwright fixtures |
 
 Four runtime dependencies: FastAPI, uvicorn, PyYAML and cryptography. The mail
 servers, the spam scorer, the template renderer and the extraction all use only
