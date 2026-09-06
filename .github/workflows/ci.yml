@@ -85,6 +85,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -109,6 +111,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -118,3 +121,96 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  verify:
+    name: Verify the published image
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # By digest, so this is exactly the artifact the publish job produced —
+      # not whatever `latest` happens to point at by the time this runs.
+      - name: Run the image that was just published
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/tahidromos@${{ needs.publish.outputs.digest }}
+        run: |
+          echo "Verifying $IMAGE"
+          docker run -d --name published \
+            -p 1025:25 -p 1587:587 -p 1143:143 -p 8080:8080 "$IMAGE"
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "ready after ${attempt} attempts"
+              curl -s http://localhost:8080/health
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "the published image did not become healthy"
+          docker logs published
+          exit 1
+
+      # The quick start in the README is a `docker run` and nothing else, so
+      # these have to pass with no configuration of any kind.
+      - name: It delivers mail
+        run: python examples/send_email.py
+
+      - name: It holds a threaded conversation
+        run: python examples/reply_conversation.py --turns 6
+
+      - name: Everything is present with zero configuration
+        run: |
+          python - <<'PY'
+          import json, sys, urllib.request
+
+          def get(path):
+              with urllib.request.urlopen(f"http://localhost:8080{path}", timeout=30) as r:
+                  return json.load(r)
+
+          health = get("/health")
+          templates = get("/templates")["templates"]
+          scenarios = get("/scenarios")["scenarios"]
+          spam = get("/spam")
+
+          print(f"mailboxes  {health['mailboxes']}")
+          print(f"templates  {len(templates)}")
+          print(f"scenarios  {len(scenarios)}")
+          print(f"spam       builtin={spam['builtin']['available']}")
+
+          problems = []
+          if health["status"] != "ok":
+              problems.append("health is not ok")
+          if health["mailboxes"] < 10:
+              problems.append(f"only {health['mailboxes']} mailboxes were seeded")
+          if len(templates) < 8:
+              problems.append(f"only {len(templates)} templates")
+          if len(scenarios) < 10:
+              problems.append(f"only {len(scenarios)} scenarios")
+          if not spam["builtin"]["available"]:
+              problems.append("the spam scorer is missing")
+          if problems:
+              sys.exit("published image is incomplete: " + "; ".join(problems))
+          print("\nthe published image is complete and needs no configuration")
+          PY
+
+      - name: Show the logs if anything failed
+        if: failure()
+        run: docker logs published
+
+      - name: Stop it
+        if: always()
+        run: docker rm -f published || true
