@@ -1,5 +1,10 @@
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/pamfilico/tahidromos" \
+      org.opencontainers.image.description="A development mail server that can hold a conversation — real SMTP, real IMAP, real reply threads." \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.title="tahidromos"
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TAHIDROMOS_DATA=/data \
