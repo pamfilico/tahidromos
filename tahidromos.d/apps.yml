@@ -1,0 +1,64 @@
+# tahidromos — one mail server for every app you develop.
+#
+# Drop YAML files in this directory and restart (`make restart-all`). Each app
+# gets its own domain, its own SMTP credentials, and its own mailboxes, so you
+# no longer need a mail sink per docker-compose file.
+#
+# Delete this file (or the directory) to fall back to the environment-variable
+# defaults from .env / docker-compose.yml.
+
+default_password: password
+
+apps:
+
+  # The built-in playground. Keep it or delete it.
+  tahidromos:
+    domain: tahidromos.test
+    description: Scratch domain with a bit of everything
+    smtp:
+      username: app
+      password: password
+    mailboxes:
+      - alice
+      - bob
+      - carol
+      - dave
+      - support
+      - noreply
+      - postmaster
+      - name: echo
+        bot: true
+        description: Replies to anything it receives
+      - name: echo2
+        bot: true
+        description: Volleys with echo to build deep threads
+
+  # A second app: its own domain, its own credentials, its own inboxes.
+  # SMTP_USER=shop@shop.test  SMTP_PASSWORD=shop-secret
+  shop:
+    domain: shop.test
+    description: Example storefront
+    smtp:
+      username: shop
+      password: shop-secret
+    mailboxes:
+      - orders
+      - customer
+      - support
+      - name: echo
+        bot: true
+
+  # A third, using the mapping form with a per-mailbox password.
+  crm:
+    domain: crm.test
+    description: Example CRM
+    smtp:
+      username: crm
+      password: crm-secret
+    mailboxes:
+      sales:
+        description: Inbound leads
+      agent:
+        password: agent-only-password
+      echo:
+        bot: true

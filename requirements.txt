@@ -1,0 +1,8 @@
+# Only four runtime dependencies: a web framework for the API and UI, and a
+# certificate generator for the TLS ports. The mail servers themselves are
+# written on the Python standard library.
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+PyYAML>=6.0
+cryptography>=44.0

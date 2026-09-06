@@ -1,0 +1,47 @@
+# tahidromos — a development mail server that can hold a conversation.
+#
+# One service. One image. No login, no external mail server, no setup:
+#
+#   docker compose up -d
+#
+# Then open http://localhost:8080
+
+name: tahidromos
+
+services:
+  tahidromos:
+    image: ghcr.io/pamfilico/tahidromos:${TAHIDROMOS_TAG:-latest}
+    container_name: tahidromos
+    restart: unless-stopped
+    environment:
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-tahidromos.test}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-mail.tahidromos.test}
+      MAIL_LOCAL_DOMAINS: ${MAIL_LOCAL_DOMAINS:-}
+      MAIL_ACCOUNTS: ${MAIL_ACCOUNTS:-alice,bob,carol,dave,support,sales,noreply,postmaster,echo,echo2}
+      MAIL_DEFAULT_PASSWORD: ${MAIL_DEFAULT_PASSWORD:-password}
+      MAIL_AUTO_CREATE: ${MAIL_AUTO_CREATE:-true}
+
+      BOT_ENABLED: ${BOT_ENABLED:-true}
+      BOT_ACCOUNTS: ${BOT_ACCOUNTS:-echo,echo2}
+      BOT_MODE: ${BOT_MODE:-echo}
+      BOT_MAX_DEPTH: ${BOT_MAX_DEPTH:-8}
+      BOT_DELAY: ${BOT_DELAY:-0.5}
+      BOT_POLL: ${BOT_POLL:-1}
+      BOT_REPLY_TO_BOTS: ${BOT_REPLY_TO_BOTS:-true}
+
+      ENABLE_TLS: ${ENABLE_TLS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${PORT_SMTP:-1025}:25"          # plain SMTP, no credentials needed
+      - "${PORT_SUBMISSION:-1587}:587"   # authenticated submission
+      - "${PORT_SUBMISSION_TLS:-1465}:465"
+      - "${PORT_IMAP:-1143}:143"
+      - "${PORT_IMAPS:-1993}:993"
+      - "${PORT_HTTP:-8080}:8080"        # inbox browser + REST API
+    volumes:
+      - tahidromos_data:/data
+      # Drop *.yml here to run many apps on one instance. Optional.
+      - ./tahidromos.d:/etc/tahidromos/conf.d:ro
+
+volumes:
+  tahidromos_data:

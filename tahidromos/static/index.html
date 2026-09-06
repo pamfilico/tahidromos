@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tahidromos</title>
+<style>
+:root{
+  --bg:#0b0d12; --panel:#11141b; --panel-2:#151924; --line:#1e2330; --line-2:#2a3040;
+  --text:#e8ecf4; --muted:#8792a8; --dim:#5d6678;
+  --accent:#6ea8fe; --accent-soft:#1b2740; --good:#4ade80; --bad:#f87171;
+  --bot:#c084fc; --capture:#fbbf24;
+  --radius:10px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
+}
+[data-theme="light"]{
+  --bg:#f6f7fa; --panel:#fff; --panel-2:#f1f4f9; --line:#e3e7ef; --line-2:#d3d9e6;
+  --text:#161a22; --muted:#5c6577; --dim:#8b93a5; --accent:#2563eb; --accent-soft:#e6eefe;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 var(--sans);
+     -webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--dim);background-clip:content-box}
+
+.app{display:grid;grid-template-columns:290px 384px 1fr;height:100vh}
+@media (max-width:1180px){.app{grid-template-columns:252px 1fr}.reader{display:none}
+  .app.reading{grid-template-columns:252px 0 1fr}.app.reading .list{display:none}
+  .app.reading .reader{display:flex}}
+@media (max-width:760px){.app{grid-template-columns:1fr}.sidebar{display:none}}
+
+/* ---------------------------------------------------------------- sidebar */
+.sidebar{background:var(--panel);border-right:1px solid var(--line);display:flex;
+         flex-direction:column;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:15px 15px 13px;border-bottom:1px solid var(--line)}
+.brand .mark{width:31px;height:31px;border-radius:9px;display:grid;place-items:center;font-size:16px;
+   background:linear-gradient(150deg,var(--accent),#a78bfa);box-shadow:0 3px 14px -4px var(--accent)}
+.brand h1{font-size:14px;margin:0;letter-spacing:.2px;font-weight:650}
+.brand .sub{font-size:10.5px;color:var(--dim);margin:0;letter-spacing:.3px}
+.brand .grow{flex:1;min-width:0}
+.iconbtn{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);
+  transition:.15s}
+.iconbtn:hover{background:var(--panel-2);color:var(--text)}
+
+.totals{display:flex;gap:8px;padding:12px 13px;border-bottom:1px solid var(--line)}
+.stat{flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+.stat b{display:block;font-size:18px;line-height:1.2;font-variant-numeric:tabular-nums}
+.stat span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px}
+.stat.unread b{color:var(--accent)}
+
+.scroll{overflow-y:auto;flex:1;min-height:0;padding:8px 8px 18px}
+.app-group{margin-bottom:5px}
+.app-head{display:flex;align-items:center;gap:8px;width:100%;padding:8px;border-radius:8px;
+  text-align:left;transition:.12s}
+.app-head:hover{background:var(--panel-2)}
+.app-head .caret{color:var(--dim);font-size:10px;transition:transform .18s;flex:none}
+.app-group.collapsed .caret{transform:rotate(-90deg)}
+.app-group.collapsed .boxes{display:none}
+.app-head .name{font-weight:640;font-size:12.5px}
+.app-head .domain{font:10.5px/1.3 var(--mono);color:var(--dim)}
+.app-head .grow{flex:1;min-width:0}
+.app-head .name,.app-head .domain{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:grid;place-items:center;
+  font-size:11px;font-weight:650;font-variant-numeric:tabular-nums;background:var(--line);color:var(--muted)}
+.badge.hot{background:var(--accent);color:#08101f;box-shadow:0 2px 8px -3px var(--accent)}
+.badge.zero{opacity:.35}
+
+.boxes{padding:2px 0 6px 6px;margin-left:11px;border-left:1px solid var(--line)}
+.box{display:flex;align-items:center;gap:9px;width:100%;padding:6px 8px;border-radius:8px;
+  text-align:left;transition:.12s;position:relative}
+.box:hover{background:var(--panel-2)}
+.box.active{background:var(--accent-soft)}
+.box.active::before{content:"";position:absolute;left:-7px;top:50%;transform:translateY(-50%);
+  width:2px;height:16px;border-radius:2px;background:var(--accent)}
+.avatar{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;
+  font-size:11px;font-weight:700;background:var(--line);color:var(--muted)}
+.box.active .avatar{background:var(--accent);color:#08101f}
+.box .who{flex:1;min-width:0}
+.box .who b{display:block;font-size:12.5px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.box .who small{display:block;font:10.5px/1.3 var(--mono);color:var(--dim);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.tag{font-size:9px;padding:1px 5px;border-radius:5px;font-weight:700;letter-spacing:.4px;flex:none}
+.tag.bot{background:rgba(192,132,252,.16);color:var(--bot)}
+.tag.cap{background:rgba(251,191,36,.16);color:var(--capture)}
+
+.creds{margin:4px 8px 10px;padding:8px 10px;background:var(--panel-2);border:1px dashed var(--line-2);
+  border-radius:8px;font:10.5px/1.5 var(--mono);color:var(--muted);
+  display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center}
+.creds span.k{color:var(--dim)}
+.creds b{color:var(--text);font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.creds .copy{color:var(--accent);cursor:pointer;opacity:.75}
+.creds .copy:hover{opacity:1;text-decoration:underline}
+
+.sidebar-foot{border-top:1px solid var(--line);padding:9px 14px;display:flex;gap:14px;
+  font-size:11px;color:var(--dim)}
+.sidebar-foot a{color:var(--muted);text-decoration:none}
+.sidebar-foot a:hover{color:var(--accent)}
+
+/* ---------------------------------------------------------------- list */
+.list{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.bar{display:flex;align-items:center;gap:7px;padding:12px 14px;border-bottom:1px solid var(--line);min-height:56px}
+.bar h2{margin:0;font-size:13.5px;font-weight:640;flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.bar .sub{font:10.5px/1.3 var(--mono);color:var(--dim);display:block;font-weight:400}
+.pill{font-size:11.5px;padding:4px 9px;border-radius:7px;border:1px solid var(--line-2);color:var(--muted);
+  transition:.13s;white-space:nowrap}
+.pill:hover{border-color:var(--accent);color:var(--accent)}
+.pill.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+.msgs{overflow-y:auto;flex:1;min-height:0}
+.msg{display:block;width:100%;text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);
+  transition:.12s;position:relative}
+.msg:hover{background:var(--panel-2)}
+.msg.active{background:var(--accent-soft)}
+.msg .row1{display:flex;align-items:baseline;gap:8px}
+.msg .from{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.msg .when{font-size:10.5px;color:var(--dim);flex:none}
+.msg .subject{font-size:13px;font-weight:550;margin:2px 0 3px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.msg.unread .subject{font-weight:700}
+.msg.unread .dot{position:absolute;left:5px;top:16px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.msg .snippet{font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg .chips{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap}
+.chip{font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-2);
+  border:1px solid var(--line);color:var(--dim);font-family:var(--mono)}
+.chip.thread{color:var(--accent);border-color:var(--accent-soft)}
+.chip.warn{color:var(--capture);border-color:rgba(251,191,36,.3)}
+
+.thread-group{border-bottom:1px solid var(--line-2)}
+.thread-head{padding:8px 14px 4px;font-size:10.5px;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.6px;background:var(--panel-2)}
+.thread-group .msg{padding-left:26px}
+.thread-group .msg::after{content:"";position:absolute;left:16px;top:0;bottom:0;width:1px;background:var(--line-2)}
+
+/* ---------------------------------------------------------------- reader */
+.reader{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.reader-body{overflow-y:auto;flex:1;min-height:0;padding:22px 26px 60px}
+.headline{font-size:19px;font-weight:660;margin:0 0 14px;line-height:1.35}
+.meta{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);
+  padding:12px 14px;margin-bottom:18px;font-size:12px}
+.meta dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}
+.meta dt{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.meta dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all}
+.body{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.body pre{margin:0;white-space:pre-wrap;word-wrap:break-word;font:13px/1.65 var(--mono)}
+.body pre .q{color:var(--dim)}
+.body iframe{width:100%;border:0;min-height:340px;background:#fff;border-radius:6px}
+.section-label{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:0 0 4px}
+.chain{margin-bottom:18px}
+.chain-item{display:flex;gap:10px;align-items:flex-start;padding:6px 0;font-size:11.5px}
+.chain-item .n{width:20px;height:20px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:10px;color:var(--muted);flex:none}
+.chain-item.self .n{background:var(--accent);color:#08101f;border-color:var(--accent)}
+.chain-item code{font-size:10.5px;color:var(--dim);word-break:break-all}
+
+.empty{display:grid;place-items:center;height:100%;text-align:center;color:var(--dim);padding:40px}
+.empty>div{max-width:360px}
+.empty .big{font-size:42px;margin-bottom:12px;opacity:.5}
+.empty h3{margin:0 0 6px;font-size:14px;color:var(--muted);font-weight:600}
+.empty p{margin:0;font-size:12.5px;line-height:1.7}
+.empty code{font-family:var(--mono);font-size:11.5px;background:var(--panel);padding:1px 5px;
+  border-radius:4px;border:1px solid var(--line)}
+
+/* ---------------------------------------------------------------- composer */
+.sheet{position:fixed;inset:0;background:rgba(4,6,10,.62);backdrop-filter:blur(3px);
+  display:none;place-items:center;z-index:40;padding:24px}
+.sheet.open{display:grid}
+.composer{width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line-2);border-radius:14px;overflow:hidden;
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}
+.composer header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.composer header h3{margin:0;font-size:13.5px;font-weight:650;flex:1}
+.composer .fields{padding:4px 18px;overflow-y:auto}
+.field{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:9px 0}
+.field label{width:56px;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.field input{flex:1;background:none;border:0;color:var(--text);font:12.5px var(--mono);outline:none;min-width:0}
+.field input:disabled{color:var(--muted)}
+.field input::placeholder{color:var(--dim)}
+.composer textarea{width:100%;min-height:190px;resize:vertical;background:none;border:0;
+  color:var(--text);font:13px/1.6 var(--mono);outline:none;padding:14px 0}
+.composer footer{display:flex;align-items:center;gap:10px;padding:12px 18px;
+  border-top:1px solid var(--line);background:var(--panel-2)}
+.composer footer .hint{flex:1;font-size:11px;color:var(--dim)}
+.btn{padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--line-2);
+  color:var(--muted);transition:.13s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#08101f}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.threadnote{font:11px/1.5 var(--mono);color:var(--dim);padding:8px 18px;background:var(--accent-soft);
+  border-bottom:1px solid var(--line);word-break:break-all}
+
+.toast{position:fixed;bottom:18px;left:50%;transform:translate(-50%,20px);background:var(--panel);
+  border:1px solid var(--line-2);border-radius:9px;padding:9px 16px;font-size:12.5px;opacity:0;
+  transition:.22s;pointer-events:none;box-shadow:0 12px 30px -10px rgba(0,0,0,.6);z-index:50}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.spin{display:inline-block;width:12px;height:12px;border:1.5px solid var(--line-2);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">📮</div>
+      <div class="grow"><h1>tahidromos</h1><p class="sub">dev mail server</p></div>
+      <button class="iconbtn" id="theme" title="Toggle theme">◐</button>
+      <button class="iconbtn" id="refresh" title="Refresh now">↻</button>
+    </div>
+    <div class="totals">
+      <div class="stat unread"><b id="t-unread">0</b><span>unread</span></div>
+      <div class="stat"><b id="t-total">0</b><span>messages</span></div>
+      <div class="stat"><b id="t-boxes">0</b><span>mailboxes</span></div>
+    </div>
+    <div class="scroll" id="apps"><div class="empty"><span class="spin"></span></div></div>
+    <div class="sidebar-foot">
+      <a href="/docs" target="_blank" rel="noreferrer">API docs ↗</a>
+      <a href="/openapi.json" target="_blank" rel="noreferrer">OpenAPI ↗</a>
+    </div>
+  </aside>
+
+  <section class="list">
+    <div class="bar">
+      <h2 id="list-title">Select a mailbox<span class="sub" id="list-sub">from the sidebar</span></h2>
+      <button class="pill" id="compose" title="Write a new message from this mailbox">Compose</button>
+      <button class="pill" id="group" title="Group messages into threads">Threads</button>
+      <button class="pill" id="purge" title="Delete every message in this mailbox">Empty</button>
+    </div>
+    <div class="msgs" id="msgs"></div>
+  </section>
+
+  <section class="reader" id="reader">
+    <div class="empty"><div>
+      <div class="big">✉️</div>
+      <h3>Nothing selected</h3>
+      <p>Pick a mailbox, then a message. Mail <code>echo@tahidromos.test</code>
+         and it will reply — then reply to that, and it will reply again.</p>
+    </div></div>
+  </section>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="composer">
+    <header>
+      <h3 id="composer-title">New message</h3>
+      <button class="iconbtn" id="composer-close" title="Close">✕</button>
+    </header>
+    <div class="threadnote" id="composer-thread" hidden></div>
+    <div class="fields">
+      <div class="field"><label for="c-from">From</label><input id="c-from" spellcheck="false"></div>
+      <div class="field"><label for="c-to">To</label>
+        <input id="c-to" spellcheck="false" placeholder="bob@tahidromos.test"></div>
+      <div class="field"><label for="c-subject">Subject</label>
+        <input id="c-subject" placeholder="Subject"></div>
+      <textarea id="c-body" placeholder="Write your message…"></textarea>
+    </div>
+    <footer>
+      <span class="hint" id="composer-hint">Delivered through the real mail server.</span>
+      <button class="btn" id="composer-cancel">Cancel</button>
+      <button class="btn primary" id="composer-send">Send</button>
+    </footer>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = {overview:null, user:null, uid:null, grouped:false, messages:[]};
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function toast(text){
+  const el = $("toast"); el.textContent = text; el.classList.add("show");
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2200);
+}
+async function api(path, options){
+  const response = await fetch(path, options);
+  if(!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  return response.status === 204 ? null : response.json();
+}
+function when(value){
+  if(!value) return "";
+  const date = new Date(value);
+  if(isNaN(date)) return "";
+  const seconds = (Date.now() - date) / 1000;
+  if(seconds < 60) return "now";
+  if(seconds < 3600) return `${Math.floor(seconds/60)}m`;
+  if(seconds < 86400) return `${Math.floor(seconds/3600)}h`;
+  return date.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+}
+const nameOf = (from) => (String(from||"").match(/<([^>]+)>/)?.[1] || from || "—");
+
+/* ------------------------------------------------------------- sidebar */
+async function loadOverview(){
+  try{
+    const fresh = await api("/overview");
+    const changed = JSON.stringify(fresh.apps) !== JSON.stringify(state.overview?.apps);
+    state.overview = fresh;
+    if(changed) renderSidebar();
+  }catch(err){ toast("Cannot reach the API: " + err.message); }
+}
+
+function renderSidebar(){
+  const data = state.overview;
+  $("t-unread").textContent = data.unread;
+  $("t-total").textContent = data.total;
+  $("t-boxes").textContent = data.apps.reduce((n,a) => n + a.mailboxes.length, 0);
+
+  const collapsed = new Set(JSON.parse(localStorage.getItem("collapsed") || "[]"));
+  $("apps").innerHTML = data.apps.map(app => {
+    const boxes = app.mailboxes.map(box => `
+      <button class="box ${state.user === box.address ? "active" : ""}"
+              data-user="${esc(box.address)}" title="${esc(box.description || box.address)}">
+        <span class="avatar">${esc((box.localpart[0]||"?").toUpperCase())}</span>
+        <span class="who"><b>${esc(box.localpart)}</b><small>${esc(box.address)}</small></span>
+        ${box.is_bot ? '<span class="tag bot">BOT</span>' : ""}
+        ${box.is_capture ? '<span class="tag cap">CAUGHT</span>' : ""}
+        <span class="badge ${box.unread ? "hot" : "zero"}">${box.unread || box.total}</span>
+      </button>`).join("");
+
+    const creds = app.smtp_address ? `
+      <div class="creds" title="SMTP credentials for this app">
+        <span class="k">user</span><b>${esc(app.smtp_address)}</b>
+        <span class="copy" data-copy="${esc(app.smtp_address)}">copy</span>
+        <span class="k">pass</span><b>${esc(app.smtp_password)}</b>
+        <span class="copy" data-copy="${esc(app.smtp_password)}">copy</span>
+      </div>` : "";
+
+    return `<div class="app-group ${collapsed.has(app.name) ? "collapsed" : ""}" data-app="${esc(app.name)}">
+      <button class="app-head"><span class="caret">▼</span>
+        <span class="grow"><span class="name">${esc(app.name)}</span>
+          <span class="domain">@${esc(app.domain)}</span></span>
+        <span class="badge ${app.unread ? "hot" : "zero"}">${app.unread || app.total}</span>
+      </button>
+      <div class="boxes">${boxes}${creds}</div></div>`;
+  }).join("");
+
+  $("apps").querySelectorAll(".app-head").forEach(head => head.onclick = () => {
+    head.parentElement.classList.toggle("collapsed");
+    localStorage.setItem("collapsed", JSON.stringify(
+      [...document.querySelectorAll(".app-group.collapsed")].map(g => g.dataset.app)));
+  });
+  $("apps").querySelectorAll(".box").forEach(box => box.onclick = () => select(box.dataset.user));
+  $("apps").querySelectorAll(".copy").forEach(el => el.onclick = (event) => {
+    event.stopPropagation();
+    navigator.clipboard?.writeText(el.dataset.copy);
+    toast("Copied " + el.dataset.copy);
+  });
+}
+
+/* ------------------------------------------------------------- list */
+async function select(user){
+  state.user = user; state.uid = null;
+  $("list-title").firstChild.textContent = user.split("@")[0];
+  $("list-sub").textContent = user;
+  document.querySelectorAll(".box").forEach(b => b.classList.toggle("active", b.dataset.user === user));
+  $("app").classList.remove("reading");
+  await loadMessages();
+}
+
+const signature = (list) => list.map(m => `${m.uid}:${m.seen ? 1 : 0}`).join(",");
+
+async function loadMessages({quiet = false} = {}){
+  if(!state.user) return;
+  if(!quiet) $("msgs").innerHTML = '<div class="empty"><span class="spin"></span></div>';
+  try{
+    const data = await api(`/messages/${encodeURIComponent(state.user)}?limit=300`);
+    // Repainting on every poll would destroy the row the user is about to
+    // click, so only redraw when the mailbox actually changed.
+    if(quiet && signature(data.messages) === signature(state.messages)) return;
+    state.messages = data.messages;
+    renderMessages();
+  }catch(err){
+    $("msgs").innerHTML = `<div class="empty"><div><h3>Could not read the mailbox</h3>
+      <p>${esc(err.message)}</p></div></div>`;
+  }
+}
+
+function messageRow(message){
+  const chips = [];
+  if(message.in_reply_to) chips.push('<span class="chip thread">↩ reply</span>');
+  if(message.depth) chips.push(`<span class="chip">depth ${message.depth}</span>`);
+  if(message.cc?.length) chips.push(`<span class="chip">cc ${message.cc.length}</span>`);
+  if(message.envelope_to && !message.to.includes(message.envelope_to))
+    chips.push(`<span class="chip warn">for ${esc(message.envelope_to)}</span>`);
+  return `<button class="msg ${message.seen ? "" : "unread"} ${state.uid === message.uid ? "active" : ""}"
+                  data-uid="${esc(message.uid)}">
+    <span class="dot"></span>
+    <span class="row1"><span class="from">${esc(nameOf(message.from))}</span>
+      <span class="when">${esc(when(message.internal_date))}</span></span>
+    <div class="subject">${esc(message.subject || "(no subject)")}</div>
+    <div class="snippet">${esc(message.snippet || message.to.join(", "))}</div>
+    ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+  </button>`;
+}
+
+function renderMessages(){
+  const list = state.messages;
+  if(!list.length){
+    $("msgs").innerHTML = `<div class="empty"><div><div class="big">🕊</div>
+      <h3>Empty mailbox</h3><p>Nothing has been delivered to
+      <code>${esc(state.user)}</code> yet.</p></div></div>`;
+    return;
+  }
+  if(state.grouped){
+    const threads = new Map();
+    for(const message of list){
+      const key = message.thread_root || message.message_id;
+      if(!threads.has(key)) threads.set(key, []);
+      threads.get(key).push(message);
+    }
+    $("msgs").innerHTML = [...threads.values()].map(group => {
+      const ordered = group.slice().sort((a,b) => (a.depth||0) - (b.depth||0));
+      return `<div class="thread-group"><div class="thread-head">
+        ${esc(ordered[0].subject || "(no subject)")} · ${group.length} message${group.length>1?"s":""}
+        </div>${ordered.map(messageRow).join("")}</div>`;
+    }).join("");
+  } else {
+    $("msgs").innerHTML = list.map(messageRow).join("");
+  }
+  $("msgs").querySelectorAll(".msg").forEach(row => row.onclick = () => open(row.dataset.uid));
+}
+
+/* ------------------------------------------------------------- reader */
+async function open(uid){
+  state.uid = uid;
+  renderMessages();
+  $("app").classList.add("reading");
+  $("reader").innerHTML = '<div class="empty"><span class="spin"></span></div>';
+  try{
+    renderReader(await api(`/messages/${encodeURIComponent(state.user)}/${uid}`));
+  }catch(err){
+    $("reader").innerHTML = `<div class="empty"><div><h3>Could not open</h3>
+      <p>${esc(err.message)}</p></div></div>`;
+  }
+}
+
+function renderReader(message){
+  const references = message.references || [];
+  const chain = references.length ? `<div class="chain">
+      ${references.map((reference,index) => `<div class="chain-item">
+        <span class="n">${index+1}</span><code>${esc(reference)}</code></div>`).join("")}
+      <div class="chain-item self"><span class="n">${references.length+1}</span>
+        <code>${esc(message.message_id)}</code></div></div>` : "";
+
+  const quoted = esc(message.text || "(no plain text part)")
+    .split("\n").map(l => l.startsWith("&gt;") ? `<span class="q">${l}</span>` : l).join("\n");
+
+  $("reader").innerHTML = `<div class="reader-body">
+    <h2 class="headline">${esc(message.subject || "(no subject)")}</h2>
+    <div class="meta"><dl>
+      <dt>From</dt><dd>${esc(message.from)}</dd>
+      <dt>To</dt><dd>${esc((message.to||[]).join(", "))}</dd>
+      ${message.cc?.length ? `<dt>Cc</dt><dd>${esc(message.cc.join(", "))}</dd>` : ""}
+      ${message.envelope_to && !(message.to||[]).includes(message.envelope_to)
+        ? `<dt>Sent to</dt><dd style="color:var(--capture)">${esc(message.envelope_to)} — captured</dd>` : ""}
+      <dt>Date</dt><dd>${esc(message.date)}</dd>
+      <dt>Message-ID</dt><dd>${esc(message.message_id)}</dd>
+      ${message.in_reply_to ? `<dt>In-Reply-To</dt><dd>${esc(message.in_reply_to)}</dd>` : ""}
+      <dt>Thread</dt><dd>${references.length + 1} message${references.length ? "s" : ""}, depth ${message.depth}</dd>
+    </dl></div>
+    ${chain ? `<h3 class="section-label">References chain</h3>${chain}` : ""}
+    <div class="bar" style="border:0;padding:0 0 10px;min-height:0">
+      <button class="pill on" data-view="text">Text</button>
+      ${message.html ? '<button class="pill" data-view="html">HTML</button>' : ""}
+      <button class="pill" data-view="raw">Raw</button>
+      <span style="flex:1"></span>
+      <button class="pill" id="reply">↩ Reply</button>
+      <button class="pill" id="reply-all">Reply all</button>
+      <button class="pill" id="seen">${message.seen ? "Mark unread" : "Mark read"}</button>
+    </div>
+    <div class="body" id="body"><pre>${quoted}</pre></div></div>`;
+
+  $("reply").onclick = () => openComposer({mode:"reply", message});
+  $("reply-all").onclick = () => openComposer({mode:"reply", message, replyAll:true});
+  $("seen").onclick = async () => {
+    await api(`/messages/${encodeURIComponent(state.user)}/${message.uid}`, {
+      method:"PATCH", headers:{"content-type":"application/json"},
+      body: JSON.stringify({seen: !message.seen})});
+    message.seen = !message.seen;
+    $("seen").textContent = message.seen ? "Mark unread" : "Mark read";
+    toast(message.seen ? "Marked read" : "Marked unread");
+    loadMessages(); loadOverview();
+  };
+
+  $("reader").querySelectorAll("[data-view]").forEach(button => button.onclick = async () => {
+    $("reader").querySelectorAll("[data-view]").forEach(b => b.classList.remove("on"));
+    button.classList.add("on");
+    const view = button.dataset.view;
+    if(view === "text") $("body").innerHTML = `<pre>${quoted}</pre>`;
+    if(view === "html") $("body").innerHTML = `<iframe sandbox srcdoc="${esc(message.html)}"></iframe>`;
+    if(view === "raw"){
+      const raw = await (await fetch(
+        `/messages/${encodeURIComponent(state.user)}/${message.uid}/raw`)).text();
+      $("body").innerHTML = `<pre>${esc(raw)}</pre>`;
+    }
+  });
+}
+
+/* ------------------------------------------------------------- composer */
+let draft = null;
+
+function openComposer({mode, message = null, replyAll = false}){
+  if(!state.user) return toast("Select a mailbox first");
+  draft = {mode, message, replyAll};
+  const replying = mode === "reply" && message;
+
+  $("composer-title").textContent = replying ? (replyAll ? "Reply all" : "Reply") : "New message";
+  $("c-from").value = state.user;
+  $("c-to").value = replying ? nameOf(message.from) : "";
+  $("c-subject").value = replying
+    ? (/^re:/i.test(message.subject || "") ? message.subject : `Re: ${message.subject || ""}`) : "";
+  $("c-body").value = "";
+
+  // On a reply the server builds In-Reply-To / References from the original,
+  // so To and Subject are shown for context but not editable.
+  const note = $("composer-thread");
+  note.hidden = !replying;
+  if(replying) note.textContent = `threaded onto ${message.message_id} — depth ${(message.depth||0)+1}`;
+  $("c-to").disabled = !!replying;
+  $("c-subject").disabled = !!replying;
+  $("composer-hint").textContent = replying
+    ? "Reply headers are built by the server." : "Delivered through the real mail server.";
+
+  $("sheet").classList.add("open");
+  setTimeout(() => $("c-body").focus(), 40);
+}
+
+function closeComposer(){ $("sheet").classList.remove("open"); draft = null; }
+
+async function sendDraft(){
+  if(!draft) return;
+  const body = $("c-body").value.trim();
+  if(!body) return toast("Write something first");
+  $("composer-send").disabled = true;
+  try{
+    if(draft.mode === "reply"){
+      const result = await api("/reply", {
+        method:"POST", headers:{"content-type":"application/json"},
+        body: JSON.stringify({user: state.user, uid: draft.message.uid, text: body,
+                              reply_all: draft.replyAll, mark_seen: false})});
+      toast(`Replied — depth ${result.depth}`);
+    } else {
+      const to = $("c-to").value.trim();
+      if(!to){ $("composer-send").disabled = false; return toast("Who is it going to?"); }
+      await api("/send", {
+        method:"POST", headers:{"content-type":"application/json"},
+        body: JSON.stringify({from: $("c-from").value.trim(), to: to.split(/[,;\s]+/),
+                              subject: $("c-subject").value, text: body})});
+      toast("Sent");
+    }
+    closeComposer();
+    setTimeout(() => { loadMessages(); loadOverview(); }, 300);
+  }catch(err){
+    toast("Could not send: " + err.message);
+  }finally{
+    $("composer-send").disabled = false;
+  }
+}
+
+$("compose").onclick = () => openComposer({mode:"new"});
+$("composer-send").onclick = sendDraft;
+$("composer-cancel").onclick = closeComposer;
+$("composer-close").onclick = closeComposer;
+$("sheet").onclick = (event) => { if(event.target === $("sheet")) closeComposer(); };
+document.addEventListener("keydown", (event) => {
+  if(event.key === "Escape" && draft) closeComposer();
+  if((event.metaKey || event.ctrlKey) && event.key === "Enter" && draft) sendDraft();
+});
+
+/* ------------------------------------------------------------- controls */
+$("refresh").onclick = () => { loadOverview(); loadMessages(); toast("Refreshed"); };
+$("group").onclick = () => {
+  state.grouped = !state.grouped;
+  $("group").classList.toggle("on", state.grouped);
+  renderMessages();
+};
+$("purge").onclick = async () => {
+  if(!state.user) return toast("Select a mailbox first");
+  const result = await api(`/messages/${encodeURIComponent(state.user)}`, {method:"DELETE"});
+  toast(`Deleted ${result.deleted} message${result.deleted === 1 ? "" : "s"}`);
+  state.uid = null;
+  $("reader").innerHTML = '<div class="empty"><div><div class="big">✉️</div><h3>Mailbox emptied</h3></div></div>';
+  loadMessages(); loadOverview();
+};
+$("theme").onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("theme", next);
+};
+document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark";
+
+(async function start(){
+  await loadOverview();
+  const first = state.overview?.apps?.[0]?.mailboxes?.[0];
+  if(first) select(first.address);
+  setInterval(() => { loadOverview(); if(state.user) loadMessages({quiet:true}); }, 5000);
+})();
+</script>
+</body>
+</html>

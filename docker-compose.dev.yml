@@ -1,0 +1,9 @@
+# Build the image from this checkout instead of pulling it:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# (or just `make dev`)
+
+services:
+  tahidromos:
+    build:
+      context: .
+    image: tahidromos:dev
