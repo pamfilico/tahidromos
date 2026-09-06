@@ -249,30 +249,91 @@ def create_app(store: Store, router: Router, config: Config, started_at: float,
 
     @app.get("/overview", tags=["apps"])
     def overview() -> dict[str, Any]:
-        result = []
-        grand_total = grand_unread = 0
+        """Every app and mailbox with its badge counts.
+
+        Mailboxes created on the fly — by sending to an address that did not
+        exist yet — are folded in alongside the configured ones. They are real
+        mailboxes holding real mail, so leaving them out of the only view that
+        lists mailboxes would be a good way to lose a message.
+        """
+        def counts_for(address: str) -> dict:
+            total, unread = store.counts(address)
+            return {"total": total, "unread": unread,
+                    "online": store.account_exists(address)}
+
+        groups: list[dict] = []
+        by_domain: dict[str, dict] = {}
+        listed: set[str] = set()
+
         for entry in config.apps:
-            boxes = []
-            app_total = app_unread = 0
+            group = {
+                "name": entry.name, "domain": entry.domain,
+                "description": entry.description,
+                "smtp_address": entry.smtp_address, "smtp_password": entry.smtp_password,
+                "mailboxes": [], "total": 0, "unread": 0,
+            }
             for mailbox in entry.mailboxes:
-                total, unread = store.counts(mailbox.address)
-                app_total += total
-                app_unread += unread
-                boxes.append({
+                group["mailboxes"].append({
                     "localpart": mailbox.localpart, "address": mailbox.address,
                     "password": mailbox.password, "is_bot": mailbox.is_bot,
                     "is_capture": mailbox.is_capture, "description": mailbox.description,
-                    "total": total, "unread": unread,
-                    "online": store.account_exists(mailbox.address),
+                    "forward_to": [config.qualify(t) for t in mailbox.forward_to],
+                    "is_credential": False, "created_on_demand": False,
+                    **counts_for(mailbox.address),
                 })
-            grand_total += app_total
-            grand_unread += app_unread
-            result.append({
-                "name": entry.name, "domain": entry.domain, "description": entry.description,
-                "smtp_address": entry.smtp_address, "smtp_password": entry.smtp_password,
-                "mailboxes": boxes, "total": app_total, "unread": app_unread,
+                listed.add(mailbox.address.lower())
+
+            # The app's own SMTP login is a real mailbox — it collects Sent
+            # copies — so it belongs in the list, but it was configured, not
+            # conjured, and saying otherwise would be misleading.
+            if entry.smtp_address and entry.smtp_address.lower() not in listed:
+                group["mailboxes"].append({
+                    "localpart": entry.smtp_address.split("@", 1)[0],
+                    "address": entry.smtp_address, "password": entry.smtp_password,
+                    "is_bot": False, "is_capture": False, "is_credential": True,
+                    "description": f"SMTP credentials for {entry.name}",
+                    "forward_to": [], "created_on_demand": False,
+                    **counts_for(entry.smtp_address),
+                })
+                listed.add(entry.smtp_address.lower())
+
+            groups.append(group)
+            by_domain.setdefault(entry.domain.lower(), group)
+
+        # Anything in the store that no config file mentions.
+        for account in store.accounts():
+            address = account["address"]
+            if address.lower() in listed:
+                continue
+            domain = address.rsplit("@", 1)[-1].lower()
+            group = by_domain.get(domain)
+            if group is None:
+                group = {"name": domain, "domain": domain,
+                         "description": "Created on the fly", "smtp_address": "",
+                         "smtp_password": "", "mailboxes": [], "total": 0, "unread": 0}
+                groups.append(group)
+                by_domain[domain] = group
+            group["mailboxes"].append({
+                "localpart": address.split("@", 1)[0], "address": address,
+                "password": config.password_for(address) or config.default_password,
+                "is_bot": account.get("is_bot", False), "is_capture": False,
+                "description": account.get("description", "") or "Created on the fly",
+                "forward_to": [], "is_credential": False, "created_on_demand": True,
+                **counts_for(address),
             })
-        return {"apps": result, "total": grand_total, "unread": grand_unread,
+            listed.add(address.lower())
+
+        grand_total = grand_unread = 0
+        for group in groups:
+            group["total"] = sum(b["total"] for b in group["mailboxes"])
+            group["unread"] = sum(b["unread"] for b in group["mailboxes"])
+            # configured mailboxes first, then the ones that appeared later
+            group["mailboxes"].sort(
+                key=lambda b: (b["created_on_demand"], b["is_credential"], b["localpart"]))
+            grand_total += group["total"]
+            grand_unread += group["unread"]
+
+        return {"apps": groups, "total": grand_total, "unread": grand_unread,
                 "domains": config.domains, "capture_address": config.capture_address,
                 "default_password": config.default_password,
                 "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
@@ -796,6 +857,25 @@ def create_app(store: Store, router: Router, config: Config, started_at: float,
                 "thread_root": trail[0]["message_id"], "messages": trail}
 
     # ---------------------------------------------------------- UI
+
+    @app.get("/logo.png", include_in_schema=False)
+    def logo() -> Response:
+        return _static_file("logo.png", "image/png")
+
+    @app.get("/favicon.png", include_in_schema=False)
+    def favicon() -> Response:
+        return _static_file("favicon.png", "image/png")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon_ico() -> Response:
+        return _static_file("favicon.png", "image/png")
+
+    def _static_file(name: str, media_type: str) -> Response:
+        path = STATIC_DIR / name
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"{name} is not in the image")
+        return Response(content=path.read_bytes(), media_type=media_type,
+                        headers={"cache-control": "public, max-age=86400"})
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index() -> str:

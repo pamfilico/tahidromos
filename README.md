@@ -1,8 +1,12 @@
 <div align="center">
 
-# 📮 tahidromos
+<img src="docs/logo.png" alt="tahidromos" width="180">
+
+# tahidromos
 
 **A development mail server that can hold a conversation.**
+
+*ταχυδρόμος* — Greek for **postman**
 
 Real SMTP · Real IMAP · Real reply threads · One container · No login
 
@@ -52,6 +56,11 @@ and no login screen anywhere. Open **<http://localhost:8080>**.
 Ten mailboxes exist immediately — `alice`, `bob`, `carol`, `dave`, `support`,
 `sales`, `noreply`, `postmaster`, `echo`, `echo2` — all at `@tahidromos.test`
 with the password **`password`**.
+
+**You do not have to create anyone.** Send to `whoever@tahidromos.test` and
+the mailbox is created on delivery, appears in the sidebar tagged `NEW`, and
+can be read over IMAP with the same password. Random per-test addresses work
+for the same reason.
 
 Point your app at it:
 
@@ -510,7 +519,7 @@ per-test addresses like `user-8f21a@tahidromos.test` just work.
 
 ## Light and dark
 
-The UI follows whichever you pick; the choice is remembered.
+Greek flag blue on an Aegean night, or on white. The choice is remembered.
 
 ![Light theme](docs/screenshots/light-theme.png)
 
@@ -585,7 +594,8 @@ frictionless, and a reason never to expose this to the internet.
 
 ## Name
 
-*ταχυδρόμος* (tahidromos) — Greek for **postman**.
+*ταχυδρόμος* (tahidromos) — Greek for **postman**. Hence the fellow at the
+top, the flag-blue palette, and the meander under the sidebar header.
 
 ## License
 

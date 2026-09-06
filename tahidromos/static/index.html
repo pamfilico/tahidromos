@@ -4,18 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tahidromos</title>
+<link rel="icon" type="image/png" href="/favicon.png">
 <style>
 :root{
-  --bg:#0b0d12; --panel:#11141b; --panel-2:#151924; --line:#1e2330; --line-2:#2a3040;
-  --text:#e8ecf4; --muted:#8792a8; --dim:#5d6678;
-  --accent:#6ea8fe; --accent-soft:#1b2740; --good:#4ade80; --bad:#f87171;
-  --bot:#c084fc; --capture:#fbbf24;
+  /* Greek flag blue (#0D5EAF) and white, with the gold from the postman's
+     buckle as the second accent. Dark mode is an Aegean night rather than a
+     neutral grey, so the blue still reads as blue against it. */
+  --greek-blue:#0d5eaf; --greek-blue-lit:#4d9de0; --gold:#e8b54d;
+  --bg:#081426; --panel:#0d1c33; --panel-2:#12253f; --line:#1b3252; --line-2:#264a75;
+  --text:#eaf2fb; --muted:#93aecb; --dim:#65809f;
+  --accent:var(--greek-blue-lit); --accent-soft:#123256;
+  --good:#5ed39a; --bad:#f87171; --bot:#c084fc; --capture:var(--gold);
+  --on-accent:#04162b;
   --radius:10px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
   --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
 }
 [data-theme="light"]{
-  --bg:#f6f7fa; --panel:#fff; --panel-2:#f1f4f9; --line:#e3e7ef; --line-2:#d3d9e6;
-  --text:#161a22; --muted:#5c6577; --dim:#8b93a5; --accent:#2563eb; --accent-soft:#e6eefe;
+  --bg:#eef4fb; --panel:#fff; --panel-2:#f3f8fd; --line:#d8e6f4; --line-2:#bed4ea;
+  --text:#0a1d33; --muted:#4a6484; --dim:#7d95b0;
+  --accent:var(--greek-blue); --accent-soft:#dceaf9; --on-accent:#ffffff;
+  --good:#12855a; --bad:#c0392b; --bot:#7c3aed; --capture:#b07d16;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -36,14 +44,25 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .sidebar{background:var(--panel);border-right:1px solid var(--line);display:flex;
          flex-direction:column;min-height:0}
 .brand{display:flex;align-items:center;gap:10px;padding:15px 15px 13px;border-bottom:1px solid var(--line)}
-.brand .mark{width:31px;height:31px;border-radius:9px;display:grid;place-items:center;font-size:16px;
-   background:linear-gradient(150deg,var(--accent),#a78bfa);box-shadow:0 3px 14px -4px var(--accent)}
-.brand h1{font-size:14px;margin:0;letter-spacing:.2px;font-weight:650}
-.brand .sub{font-size:10.5px;color:var(--dim);margin:0;letter-spacing:.3px}
+.brand .mark{width:34px;height:34px;border-radius:50%;flex:none;display:block;
+   background:#fff;box-shadow:0 2px 12px -3px rgba(13,94,175,.7);object-fit:cover}
+.brand h1{font-size:14px;margin:0;letter-spacing:.2px;font-weight:650;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand .sub{font-size:10.5px;color:var(--dim);margin:0;letter-spacing:.3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand .grow{min-width:0}
 .brand .grow{flex:1;min-width:0}
 .iconbtn{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);
   transition:.15s}
 .iconbtn:hover{background:var(--panel-2);color:var(--text)}
+
+/* The Greek key from the logo's border, as a 3px rule under the brand. */
+.meander{height:6px;flex:none;opacity:.85;
+  background-image:url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='24' height='6' viewBox='0 0 24 6'>\
+<path d='M0 5h4V1h6v3h4V1h6v4h4' fill='none' stroke='%230d5eaf' stroke-width='1.2'/></svg>");
+  background-repeat:repeat-x;background-size:24px 6px}
+[data-theme="light"] .meander{opacity:.6}
 
 .totals{display:flex;gap:8px;padding:12px 13px;border-bottom:1px solid var(--line)}
 .stat{flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px}
@@ -66,7 +85,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 
 .badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:grid;place-items:center;
   font-size:11px;font-weight:650;font-variant-numeric:tabular-nums;background:var(--line);color:var(--muted)}
-.badge.hot{background:var(--accent);color:#08101f;box-shadow:0 2px 8px -3px var(--accent)}
+.badge.hot{background:var(--accent);color:var(--on-accent);box-shadow:0 2px 8px -3px var(--accent)}
 .badge.zero{opacity:.35}
 
 .boxes{padding:2px 0 6px 6px;margin-left:11px;border-left:1px solid var(--line)}
@@ -78,14 +97,16 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
   width:2px;height:16px;border-radius:2px;background:var(--accent)}
 .avatar{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;
   font-size:11px;font-weight:700;background:var(--line);color:var(--muted)}
-.box.active .avatar{background:var(--accent);color:#08101f}
+.box.active .avatar{background:var(--accent);color:var(--on-accent)}
 .box .who{flex:1;min-width:0}
 .box .who b{display:block;font-size:12.5px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .box .who small{display:block;font:10.5px/1.3 var(--mono);color:var(--dim);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .tag{font-size:9px;padding:1px 5px;border-radius:5px;font-weight:700;letter-spacing:.4px;flex:none}
 .tag.bot{background:rgba(192,132,252,.16);color:var(--bot)}
-.tag.cap{background:rgba(251,191,36,.16);color:var(--capture)}
+.tag.cap{background:rgba(232,181,77,.18);color:var(--capture)}
+.tag.new{background:rgba(94,211,154,.16);color:var(--good)}
+.tag.smtp{background:rgba(147,174,203,.14);color:var(--muted)}
 
 .creds{margin:4px 8px 10px;padding:8px 10px;background:var(--panel-2);border:1px dashed var(--line-2);
   border-radius:8px;font:10.5px/1.5 var(--mono);color:var(--muted);
@@ -155,7 +176,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .chain-item{display:flex;gap:10px;align-items:flex-start;padding:6px 0;font-size:11.5px}
 .chain-item .n{width:20px;height:20px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);
   display:grid;place-items:center;font-size:10px;color:var(--muted);flex:none}
-.chain-item.self .n{background:var(--accent);color:#08101f;border-color:var(--accent)}
+.chain-item.self .n{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .chain-item code{font-size:10.5px;color:var(--dim);word-break:break-all}
 
 .empty{display:grid;place-items:center;height:100%;text-align:center;color:var(--dim);padding:40px}
@@ -230,7 +251,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .btn{padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--line-2);
   color:var(--muted);transition:.13s}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#08101f}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn.primary:hover{filter:brightness(1.08)}
 .btn[disabled]{opacity:.5;pointer-events:none}
 .threadnote{font:11px/1.5 var(--mono);color:var(--dim);padding:8px 18px;background:var(--accent-soft);
@@ -249,11 +270,12 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 <div class="app" id="app">
   <aside class="sidebar">
     <div class="brand">
-      <div class="mark">📮</div>
-      <div class="grow"><h1>tahidromos</h1><p class="sub">dev mail server</p></div>
+      <img class="mark" src="/logo.png" alt="" width="34" height="34">
+      <div class="grow"><h1>tahidromos</h1><p class="sub">ταχυδρόμος</p></div>
       <button class="iconbtn" id="theme" title="Toggle theme">◐</button>
       <button class="iconbtn" id="refresh" title="Refresh now">↻</button>
     </div>
+    <div class="meander" aria-hidden="true"></div>
     <div class="totals">
       <div class="stat unread"><b id="t-unread">0</b><span>unread</span></div>
       <div class="stat"><b id="t-total">0</b><span>messages</span></div>
@@ -363,6 +385,8 @@ function renderSidebar(){
         <span class="who"><b>${esc(box.localpart)}</b><small>${esc(box.address)}</small></span>
         ${box.is_bot ? '<span class="tag bot">BOT</span>' : ""}
         ${box.is_capture ? '<span class="tag cap">CAUGHT</span>' : ""}
+        ${box.is_credential ? '<span class="tag smtp">SMTP</span>' : ""}
+        ${box.created_on_demand ? '<span class="tag new">NEW</span>' : ""}
         <span class="badge ${box.unread ? "hot" : "zero"}">${box.unread || box.total}</span>
       </button>`).join("");
 
