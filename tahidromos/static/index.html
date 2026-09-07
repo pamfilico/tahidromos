@@ -269,70 +269,70 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 </style>
 </head>
 <body>
-<div class="app" id="app">
-  <aside class="sidebar">
+<div class="app" id="app" data-testid="app">
+  <aside class="sidebar" data-testid="sidebar">
     <div class="brand">
-      <img class="mark" src="/logo.png" alt="" width="34" height="34">
+      <img class="mark" src="/logo.png" alt="" width="34" height="34" data-testid="brand-logo">
       <div class="grow"><h1>tahidromos</h1><p class="sub">ταχυδρόμος</p></div>
-      <button class="iconbtn" id="theme" title="Toggle theme">◐</button>
-      <button class="iconbtn" id="refresh" title="Refresh now">↻</button>
+      <button class="iconbtn" id="theme" data-testid="theme-toggle" title="Toggle theme">◐</button>
+      <button class="iconbtn" id="refresh" data-testid="refresh" title="Refresh now">↻</button>
     </div>
     <div class="meander" aria-hidden="true"></div>
     <div class="totals">
-      <div class="stat unread"><b id="t-unread">0</b><span>unread</span></div>
-      <div class="stat"><b id="t-total">0</b><span>messages</span></div>
-      <div class="stat"><b id="t-boxes">0</b><span>mailboxes</span></div>
+      <div class="stat unread" data-testid="stat-unread"><b id="t-unread" data-testid="stat-unread-value">0</b><span>unread</span></div>
+      <div class="stat" data-testid="stat-total"><b id="t-total" data-testid="stat-total-value">0</b><span>messages</span></div>
+      <div class="stat" data-testid="stat-mailboxes"><b id="t-boxes" data-testid="stat-mailboxes-value">0</b><span>mailboxes</span></div>
     </div>
-    <div class="scroll" id="apps"><div class="empty"><span class="spin"></span></div></div>
+    <div class="scroll" id="apps" data-testid="app-list"><div class="empty"><span class="spin"></span></div></div>
     <div class="sidebar-foot">
       <a href="/docs" target="_blank" rel="noreferrer">API docs ↗</a>
       <a href="/openapi.json" target="_blank" rel="noreferrer">OpenAPI ↗</a>
     </div>
   </aside>
 
-  <section class="list">
+  <section class="list" data-testid="message-pane">
     <div class="bar">
-      <h2 id="list-title">Select a mailbox<span class="sub" id="list-sub">from the sidebar</span></h2>
-      <button class="pill" id="compose" title="Write a new message from this mailbox">Compose</button>
-      <button class="pill" id="group" title="Group messages into threads">Threads</button>
-      <button class="pill" id="purge" title="Delete every message in this mailbox">Empty</button>
+      <h2 id="list-title" data-testid="list-title">Select a mailbox<span class="sub" id="list-sub" data-testid="list-subtitle">from the sidebar</span></h2>
+      <button class="pill" id="compose" data-testid="compose-button" title="Write a new message from this mailbox">Compose</button>
+      <button class="pill" id="group" data-testid="threads-toggle" title="Group messages into threads">Threads</button>
+      <button class="pill" id="purge" data-testid="empty-button" title="Delete every message in this mailbox">Empty</button>
     </div>
-    <div class="msgs" id="msgs"></div>
+    <div class="msgs" id="msgs" data-testid="message-list"></div>
   </section>
 
-  <section class="reader" id="reader">
+  <section class="reader" id="reader" data-testid="reader">
     <div class="empty"><div>
       <img class="big" src="/logo.png" alt="">
-      <h3>Nothing selected</h3>
+      <h3 data-testid="nothing-selected">Nothing selected</h3>
       <p>Pick a mailbox, then a message. Mail <code>echo@tahidromos.test</code>
          and it will reply — then reply to that, and it will reply again.</p>
     </div></div>
   </section>
 </div>
 
-<div class="sheet" id="sheet">
-  <div class="composer">
+<div class="sheet" id="sheet" data-testid="composer-sheet">
+  <div class="composer" data-testid="composer">
     <header>
-      <h3 id="composer-title">New message</h3>
-      <button class="iconbtn" id="composer-close" title="Close">✕</button>
+      <h3 id="composer-title" data-testid="composer-title">New message</h3>
+      <button class="iconbtn" id="composer-close" data-testid="composer-close" title="Close">✕</button>
     </header>
-    <div class="threadnote" id="composer-thread" hidden></div>
+    <div class="threadnote" id="composer-thread" data-testid="composer-thread-note" hidden></div>
     <div class="fields">
-      <div class="field"><label for="c-from">From</label><input id="c-from" spellcheck="false"></div>
+      <div class="field"><label for="c-from">From</label><input id="c-from" data-testid="composer-from" spellcheck="false"></div>
       <div class="field"><label for="c-to">To</label>
-        <input id="c-to" spellcheck="false" placeholder="bob@tahidromos.test"></div>
+        <input id="c-to" data-testid="composer-to" spellcheck="false" placeholder="bob@tahidromos.test"></div>
       <div class="field"><label for="c-subject">Subject</label>
-        <input id="c-subject" placeholder="Subject"></div>
-      <textarea id="c-body" placeholder="Write your message…"></textarea>
+        <input id="c-subject" data-testid="composer-subject" placeholder="Subject"></div>
+      <textarea id="c-body" data-testid="composer-body" placeholder="Write your message…"></textarea>
     </div>
     <footer>
-      <span class="hint" id="composer-hint">Delivered through the real mail server.</span>
-      <button class="btn" id="composer-cancel">Cancel</button>
-      <button class="btn primary" id="composer-send">Send</button>
+      <span class="hint" id="composer-hint" data-testid="composer-hint">Delivered through the real mail server.</span>
+      <button class="btn" id="composer-cancel" data-testid="composer-cancel">Cancel</button>
+      <button class="btn primary" id="composer-send" data-testid="composer-send">Send</button>
     </footer>
   </div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" data-testid="toast"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -382,29 +382,34 @@ function renderSidebar(){
   $("apps").innerHTML = data.apps.map(app => {
     const boxes = app.mailboxes.map(box => `
       <button class="box ${state.user === box.address ? "active" : ""}"
+              data-testid="mailbox" data-address="${esc(box.address)}"
               data-user="${esc(box.address)}" title="${esc(box.description || box.address)}">
         <span class="avatar">${esc((box.localpart[0]||"?").toUpperCase())}</span>
-        <span class="who"><b>${esc(box.localpart)}</b><small>${esc(box.address)}</small></span>
-        ${box.is_bot ? '<span class="tag bot">BOT</span>' : ""}
-        ${box.is_capture ? '<span class="tag cap">CAUGHT</span>' : ""}
-        ${box.is_credential ? '<span class="tag smtp">SMTP</span>' : ""}
-        ${box.created_on_demand ? '<span class="tag new">NEW</span>' : ""}
-        <span class="badge ${box.unread ? "hot" : "zero"}">${box.unread || box.total}</span>
+        <span class="who"><b data-testid="mailbox-name">${esc(box.localpart)}</b>
+          <small data-testid="mailbox-address">${esc(box.address)}</small></span>
+        ${box.is_bot ? '<span class="tag bot" data-testid="tag-bot">BOT</span>' : ""}
+        ${box.is_capture ? '<span class="tag cap" data-testid="tag-capture">CAUGHT</span>' : ""}
+        ${box.is_credential ? '<span class="tag smtp" data-testid="tag-smtp">SMTP</span>' : ""}
+        ${box.created_on_demand ? '<span class="tag new" data-testid="tag-new">NEW</span>' : ""}
+        <span class="badge ${box.unread ? "hot" : "zero"}" data-testid="mailbox-badge"
+              data-unread="${box.unread}" data-total="${box.total}">${box.unread || box.total}</span>
       </button>`).join("");
 
     const creds = app.smtp_address ? `
-      <div class="creds" title="SMTP credentials for this app">
-        <span class="k">user</span><b>${esc(app.smtp_address)}</b>
-        <span class="copy" data-copy="${esc(app.smtp_address)}">copy</span>
-        <span class="k">pass</span><b>${esc(app.smtp_password)}</b>
-        <span class="copy" data-copy="${esc(app.smtp_password)}">copy</span>
+      <div class="creds" data-testid="app-credentials" title="SMTP credentials for this app">
+        <span class="k">user</span><b data-testid="app-smtp-user">${esc(app.smtp_address)}</b>
+        <span class="copy" data-testid="copy-smtp-user" data-copy="${esc(app.smtp_address)}">copy</span>
+        <span class="k">pass</span><b data-testid="app-smtp-password">${esc(app.smtp_password)}</b>
+        <span class="copy" data-testid="copy-smtp-password" data-copy="${esc(app.smtp_password)}">copy</span>
       </div>` : "";
 
-    return `<div class="app-group ${collapsed.has(app.name) ? "collapsed" : ""}" data-app="${esc(app.name)}">
-      <button class="app-head"><span class="caret">▼</span>
-        <span class="grow"><span class="name">${esc(app.name)}</span>
-          <span class="domain">@${esc(app.domain)}</span></span>
-        <span class="badge ${app.unread ? "hot" : "zero"}">${app.unread || app.total}</span>
+    return `<div class="app-group ${collapsed.has(app.name) ? "collapsed" : ""}"
+                 data-testid="app-group" data-app="${esc(app.name)}">
+      <button class="app-head" data-testid="app-header"><span class="caret">▼</span>
+        <span class="grow"><span class="name" data-testid="app-name">${esc(app.name)}</span>
+          <span class="domain" data-testid="app-domain">@${esc(app.domain)}</span></span>
+        <span class="badge ${app.unread ? "hot" : "zero"}" data-testid="app-badge"
+              data-unread="${app.unread}">${app.unread || app.total}</span>
       </button>
       <div class="boxes">${boxes}${creds}</div></div>`;
   }).join("");
@@ -452,18 +457,19 @@ async function loadMessages({quiet = false} = {}){
 
 function messageRow(message){
   const chips = [];
-  if(message.in_reply_to) chips.push('<span class="chip thread">↩ reply</span>');
-  if(message.depth) chips.push(`<span class="chip">depth ${message.depth}</span>`);
+  if(message.in_reply_to) chips.push('<span class="chip thread" data-testid="chip-reply">↩ reply</span>');
+  if(message.depth) chips.push(`<span class="chip" data-testid="chip-depth" data-depth="${message.depth}">depth ${message.depth}</span>`);
   if(message.cc?.length) chips.push(`<span class="chip">cc ${message.cc.length}</span>`);
   if(message.envelope_to && !message.to.includes(message.envelope_to))
     chips.push(`<span class="chip warn">for ${esc(message.envelope_to)}</span>`);
   return `<button class="msg ${message.seen ? "" : "unread"} ${state.uid === message.uid ? "active" : ""}"
-                  data-uid="${esc(message.uid)}">
+                  data-testid="message-row" data-uid="${esc(message.uid)}"
+                  data-seen="${message.seen}" data-subject="${esc(message.subject || "")}">
     <span class="dot"></span>
-    <span class="row1"><span class="from">${esc(nameOf(message.from))}</span>
-      <span class="when">${esc(when(message.internal_date))}</span></span>
-    <div class="subject">${esc(message.subject || "(no subject)")}</div>
-    <div class="snippet">${esc(message.snippet || message.to.join(", "))}</div>
+    <span class="row1"><span class="from" data-testid="message-from">${esc(nameOf(message.from))}</span>
+      <span class="when" data-testid="message-when">${esc(when(message.internal_date))}</span></span>
+    <div class="subject" data-testid="message-subject">${esc(message.subject || "(no subject)")}</div>
+    <div class="snippet" data-testid="message-snippet">${esc(message.snippet || message.to.join(", "))}</div>
     ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
   </button>`;
 }
@@ -472,7 +478,7 @@ function renderMessages(){
   const list = state.messages;
   if(!list.length){
     $("msgs").innerHTML = `<div class="empty"><div><img class="big" src="/logo.png" alt="">
-      <h3>Empty mailbox</h3><p>Nothing has been delivered to
+      <h3 data-testid="empty-mailbox">Empty mailbox</h3><p>Nothing has been delivered to
       <code>${esc(state.user)}</code> yet.</p></div></div>`;
     return;
   }
@@ -485,7 +491,7 @@ function renderMessages(){
     }
     $("msgs").innerHTML = [...threads.values()].map(group => {
       const ordered = group.slice().sort((a,b) => (a.depth||0) - (b.depth||0));
-      return `<div class="thread-group"><div class="thread-head">
+      return `<div class="thread-group" data-testid="thread-group"><div class="thread-head" data-testid="thread-header">
         ${esc(ordered[0].subject || "(no subject)")} · ${group.length} message${group.length>1?"s":""}
         </div>${ordered.map(messageRow).join("")}</div>`;
     }).join("");
@@ -511,42 +517,43 @@ async function open(uid){
 
 function renderReader(message){
   const references = message.references || [];
-  const chain = references.length ? `<div class="chain">
-      ${references.map((reference,index) => `<div class="chain-item">
+  const chain = references.length ? `<div class="chain" data-testid="references-chain">
+      ${references.map((reference,index) => `<div class="chain-item" data-testid="chain-item">
         <span class="n">${index+1}</span><code>${esc(reference)}</code></div>`).join("")}
-      <div class="chain-item self"><span class="n">${references.length+1}</span>
+      <div class="chain-item self" data-testid="chain-item"><span class="n">${references.length+1}</span>
         <code>${esc(message.message_id)}</code></div></div>` : "";
 
   const quoted = esc(message.text || "(no plain text part)")
     .split("\n").map(l => l.startsWith("&gt;") ? `<span class="q">${l}</span>` : l).join("\n");
 
-  $("reader").innerHTML = `<div class="reader-body">
-    <h2 class="headline">${esc(message.subject || "(no subject)")}</h2>
-    <div class="meta"><dl>
-      <dt>From</dt><dd>${esc(message.from)}</dd>
-      <dt>To</dt><dd>${esc((message.to||[]).join(", "))}</dd>
+  $("reader").innerHTML = `<div class="reader-body" data-testid="reader-body"
+       data-uid="${esc(message.uid)}" data-message-id="${esc(message.message_id)}">
+    <h2 class="headline" data-testid="message-headline">${esc(message.subject || "(no subject)")}</h2>
+    <div class="meta" data-testid="message-meta"><dl>
+      <dt>From</dt><dd data-testid="meta-from">${esc(message.from)}</dd>
+      <dt>To</dt><dd data-testid="meta-to">${esc((message.to||[]).join(", "))}</dd>
       ${message.cc?.length ? `<dt>Cc</dt><dd>${esc(message.cc.join(", "))}</dd>` : ""}
       ${message.envelope_to && !(message.to||[]).includes(message.envelope_to)
         ? `<dt>Sent to</dt><dd style="color:var(--capture)">${esc(message.envelope_to)} — captured</dd>` : ""}
-      <dt>Date</dt><dd>${esc(message.date)}</dd>
-      <dt>Message-ID</dt><dd>${esc(message.message_id)}</dd>
-      ${message.in_reply_to ? `<dt>In-Reply-To</dt><dd>${esc(message.in_reply_to)}</dd>` : ""}
-      <dt>Thread</dt><dd>${references.length + 1} message${references.length ? "s" : ""}, depth ${message.depth}</dd>
+      <dt>Date</dt><dd data-testid="meta-date">${esc(message.date)}</dd>
+      <dt>Message-ID</dt><dd data-testid="meta-message-id">${esc(message.message_id)}</dd>
+      ${message.in_reply_to ? `<dt>In-Reply-To</dt><dd data-testid="meta-in-reply-to">${esc(message.in_reply_to)}</dd>` : ""}
+      <dt>Thread</dt><dd data-testid="meta-thread" data-depth="${message.depth}">${references.length + 1} message${references.length ? "s" : ""}, depth ${message.depth}</dd>
     </dl></div>
     <div id="spam-slot"></div>
     ${chain ? `<h3 class="section-label">References chain</h3>${chain}` : ""}
     <div class="bar" style="border:0;padding:0 0 10px;min-height:0">
-      <button class="pill on" data-view="text">Text</button>
-      ${message.html ? '<button class="pill" data-view="html">HTML</button>' : ""}
-      <button class="pill" data-view="raw">Raw</button>
-      <button class="pill" id="save-eml" title="Download the message as .eml">.eml</button>
+      <button class="pill on" data-view="text" data-testid="view-text">Text</button>
+      ${message.html ? '<button class="pill" data-view="html" data-testid="view-html">HTML</button>' : ""}
+      <button class="pill" data-view="raw" data-testid="view-raw">Raw</button>
+      <button class="pill" id="save-eml" data-testid="download-eml" title="Download the message as .eml">.eml</button>
       <span style="flex:1"></span>
-      <button class="pill" id="reply">↩ Reply</button>
-      <button class="pill" id="reply-all">Reply all</button>
-      <button class="pill" id="forward">↪ Forward</button>
-      <button class="pill" id="seen">${message.seen ? "Mark unread" : "Mark read"}</button>
+      <button class="pill" id="reply" data-testid="reply-button">↩ Reply</button>
+      <button class="pill" id="reply-all" data-testid="reply-all-button">Reply all</button>
+      <button class="pill" id="forward" data-testid="forward-button">↪ Forward</button>
+      <button class="pill" id="seen" data-testid="seen-toggle">${message.seen ? "Mark unread" : "Mark read"}</button>
     </div>
-    <div class="body" id="body"><pre>${quoted}</pre></div></div>`;
+    <div class="body" id="body" data-testid="message-body"><pre>${quoted}</pre></div></div>`;
 
   loadSpamScore(message);
 
@@ -591,19 +598,20 @@ async function loadSpamScore(message){
   try{
     const result = await api(
       `/messages/${encodeURIComponent(state.user)}/${message.uid}/spam`);
-    const rules = result.hits.map(hit => `<div class="spam-rule">
+    const rules = result.hits.map(hit => `<div class="spam-rule" data-testid="spam-rule">
         <b>${hit.weight > 0 ? "+" : ""}${esc(hit.weight)}</b>
         <code>${esc(hit.rule)}</code>
         <span>${esc(hit.description)}</span>
       </div>`).join("");
 
-    slot.innerHTML = `<div class="spam" id="spam-box">
-      <div class="spam-head" id="spam-toggle">
-        <span class="spam-score ${esc(result.verdict)}">${esc(result.score)}</span>
-        <span class="why">${esc(result.summary)}</span>
+    slot.innerHTML = `<div class="spam" id="spam-box" data-testid="spam-badge"
+         data-verdict="${esc(result.verdict)}" data-score="${esc(result.score)}">
+      <div class="spam-head" id="spam-toggle" data-testid="spam-toggle">
+        <span class="spam-score ${esc(result.verdict)}" data-testid="spam-score">${esc(result.score)}</span>
+        <span class="why" data-testid="spam-summary">${esc(result.summary)}</span>
         <span class="engine">${esc(result.engine)}${result.hits.length ? " · click for detail" : ""}</span>
       </div>
-      ${rules ? `<div class="spam-rules">${rules}</div>` : ""}
+      ${rules ? `<div class="spam-rules" data-testid="spam-rules">${rules}</div>` : ""}
     </div>`;
 
     if(rules){
@@ -652,22 +660,22 @@ function previewMarkup(message){
     `</optgroup>`).join("");
 
   return `<div class="preview">
-    <div class="preview-bar">
-      <select id="device">${options}</select>
-      <span class="dims" id="dims"></span>
+    <div class="preview-bar" data-testid="preview-bar">
+      <select id="device" data-testid="device-select">${options}</select>
+      <span class="dims" id="dims" data-testid="device-dims"></span>
       <span class="grow"></span>
       <span class="zoom">
-        <button id="zoom-out" title="Zoom out">−</button>
-        <span id="zoom-level"></span>
-        <button id="zoom-in" title="Zoom in">+</button>
-        <button id="zoom-fit" title="Fit to width" style="width:auto;padding:0 7px">fit</button>
+        <button id="zoom-out" data-testid="zoom-out" title="Zoom out">−</button>
+        <span id="zoom-level" data-testid="zoom-level"></span>
+        <button id="zoom-in" data-testid="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-fit" data-testid="zoom-fit" title="Fit to width" style="width:auto;padding:0 7px">fit</button>
       </span>
-      <button class="pill" id="save-png" title="Save what you see as a PNG">Save PNG</button>
-      <button class="pill" id="save-html" title="Download the HTML part">Save HTML</button>
+      <button class="pill" id="save-png" data-testid="save-png" title="Save what you see as a PNG">Save PNG</button>
+      <button class="pill" id="save-html" data-testid="save-html" title="Download the HTML part">Save HTML</button>
     </div>
-    <div class="stage" id="stage">
-      <div class="device" id="device-frame">
-        <iframe id="preview-frame" sandbox="allow-same-origin"
+    <div class="stage" id="stage" data-testid="preview-stage">
+      <div class="device" id="device-frame" data-testid="device-frame">
+        <iframe id="preview-frame" data-testid="preview-frame" sandbox="allow-same-origin"
                 src="/messages/${encodeURIComponent(state.user)}/${message.uid}/html"
                 title="Email preview"></iframe>
       </div>

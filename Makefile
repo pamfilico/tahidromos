@@ -4,10 +4,10 @@ COMPOSE := docker compose
 DEV     := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 PY      := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
-.PHONY: help up dev down clean logs ps restart venv test test-fast smoke reply seed templates user accounts open run
+.PHONY: help up dev down clean logs ps restart venv test test-fast test-e2e test-image smoke reply seed templates user accounts open run
 
 help: ## Show this help
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "};{printf "\033[36m%-12s\033[0m %s\n",$$1,$$2}'
 
 up: ## Start from the published image
@@ -47,6 +47,17 @@ test: ## Run the whole suite against the running server
 
 test-fast: ## Everything except the slow bot tests
 	$(PY) -m pytest -m "not slow"
+
+test-e2e: ## Browser tests against the running server
+	$(PY) -m pip install -q -r tests/e2e/requirements.txt
+	$(PY) -m playwright install --with-deps chromium
+	$(PY) -m pytest tests/e2e
+
+test-image: ## Browser tests against the published image, pulled fresh
+	$(PY) -m pip install -q -r tests/e2e/requirements.txt
+	$(PY) -m playwright install --with-deps chromium
+	TAHIDROMOS_IMAGE=$(or $(IMAGE),ghcr.io/pamfilico/tahidromos:latest) \
+	  $(PY) -m pytest tests/e2e
 
 smoke: ## Send one mail and prove it arrived
 	$(PY) examples/send_email.py

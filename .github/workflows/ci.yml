@@ -69,6 +69,14 @@ jobs:
       - name: Run the JavaScript client tests
         run: node --test clients/node/test/*.test.js
 
+      - name: Install a browser
+        run: |
+          pip install -r tests/e2e/requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Drive the real interface in a browser
+        run: pytest tests/e2e
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color --tail 400
@@ -207,9 +215,20 @@ jobs:
           print("\nthe published image is complete and needs no configuration")
           PY
 
+      # The interface is part of the product, so the published image has to
+      # serve a working one — not just answer /health.
+      - name: Drive the published image's interface in a browser
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/tahidromos@${{ needs.publish.outputs.digest }}
+        run: |
+          docker rm -f published
+          pip install -r tests/requirements.txt -r tests/e2e/requirements.txt
+          playwright install --with-deps chromium
+          TAHIDROMOS_IMAGE="$IMAGE" pytest tests/e2e
+
       - name: Show the logs if anything failed
         if: failure()
-        run: docker logs published
+        run: docker logs published || docker logs tahidromos-e2e || true
 
       - name: Stop it
         if: always()

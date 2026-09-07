@@ -639,9 +639,23 @@ tests/test_inbound_and_scenarios.py inboxes, scenarios, extraction, webhooks
 tests/test_forwarding.py           forwards, replies to forwards, rules, loops
 tests/test_client_fixtures.py      the pytest fixtures users actually write with
 tests/test_mcp.py                  the MCP tools, driven through call_tool
+tests/e2e/                         the interface, driven in a real browser
 ```
 
-166 tests, about a minute, plus 12 for the JavaScript client.
+173 tests in about a minute, 26 browser tests, and 12 for the JavaScript
+client.
+
+The browser tests locate everything by `data-testid`, so restyling does not
+break them and renaming a hook fails loudly instead of silently matching
+nothing. They run twice in CI: once against the build from the branch, and
+again against the **published image**, pulled by digest — because the
+interface is part of the product, and an image that answers `/health` but
+serves a broken UI has still shipped broken.
+
+```sh
+make test-e2e     # against whatever is running
+make test-image   # pull the published image and drive that
+```
 
 ### What is inside
 
