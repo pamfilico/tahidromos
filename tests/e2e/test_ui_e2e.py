@@ -501,3 +501,83 @@ def test_emptying_a_mailbox_clears_it(ui, api, unique):
     ui.click('[data-testid="empty-button"]')
     expect(ui.locator('[data-testid="toast"]')).to_contain_text("Deleted")
     expect(ui.locator('[data-testid="empty-mailbox"]')).to_be_visible()
+
+
+# ---------------------------------------------------------------- delete / archive / clear all
+
+
+def _fresh(ui, api, unique, subject):
+    api.post("/send", {"from": "alice", "to": "dave", "subject": subject, "text": "x"})
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "dave@tahidromos.test")
+    row = ui.locator('[data-testid="message-row"]', has_text=subject).first
+    expect(row).to_be_visible()
+    return row
+
+
+def test_a_row_can_be_deleted_from_the_list(ui, api, unique):
+    subject = f"row delete {unique}"
+    row = _fresh(ui, api, unique, subject)
+    row.hover()
+    row.locator('[data-testid="row-delete"]').click()
+    expect(ui.locator('[data-testid="toast"]')).to_contain_text("Deleted")
+    expect(ui.locator('[data-testid="message-row"]', has_text=subject)).to_have_count(0)
+    # clicking the icon must not have opened the message
+    expect(ui.locator('[data-testid="message-headline"]', has_text=subject)).to_have_count(0)
+    subjects = [m["subject"] for m in api.get("/messages/dave").json()["messages"]]
+    assert subject not in subjects
+
+
+def test_archive_then_restore_from_the_archive_folder(ui, api, unique):
+    subject = f"row archive {unique}"
+    row = _fresh(ui, api, unique, subject)
+    row.locator('[data-testid="row-archive"]').click()
+    expect(ui.locator('[data-testid="toast"]')).to_contain_text("Archived")
+    expect(ui.locator('[data-testid="message-row"]', has_text=subject)).to_have_count(0)
+
+    ui.click('[data-testid="folder-archive"]')
+    archived = ui.locator('[data-testid="message-row"]', has_text=subject)
+    expect(archived).to_have_count(1)
+    archived.click()                                       # it opens and renders from the Archive
+    expect(ui.locator('[data-testid="message-headline"]')).to_have_text(subject)
+
+    ui.click('[data-testid="reader-restore"]')
+    expect(ui.locator('[data-testid="toast"]')).to_contain_text("Moved to Inbox")
+    ui.click('[data-testid="folder-inbox"]')
+    expect(ui.locator('[data-testid="message-row"]', has_text=subject)).to_have_count(1)
+
+
+def test_the_open_message_can_be_deleted_from_the_reader(ui, api, unique):
+    subject = f"reader delete {unique}"
+    _fresh(ui, api, unique, subject)
+    open_message(ui, subject)
+    ui.click('[data-testid="reader-delete"]')
+    expect(ui.locator('[data-testid="toast"]')).to_contain_text("Deleted")
+    expect(ui.locator('[data-testid="message-row"]', has_text=subject)).to_have_count(0)
+    expect(ui.locator('[data-testid="message-headline"]')).to_have_count(0)
+
+
+def test_clear_all_asks_twice_and_calls_the_api(ui):
+    """The second click is intercepted: really clearing would wipe the shared test server."""
+    calls = []
+
+    def fake_clear(route):
+        calls.append(route.request.method)
+        route.fulfill(status=200, content_type="application/json", body='{"deleted": 7}')
+
+    ui.route("**/messages", fake_clear)
+    button = ui.locator('[data-testid="clear-all"]')
+    button.click()
+    expect(button).to_have_text("Clear all?")
+    assert calls == []                                     # one click arms, nothing is deleted
+    button.click()
+    expect(ui.locator('[data-testid="toast"]')).to_contain_text("Cleared 7 messages")
+    assert calls == ["DELETE"]
+    expect(button).not_to_have_text("Clear all?")
+
+
+def test_an_armed_clear_all_disarms_on_its_own(ui):
+    button = ui.locator('[data-testid="clear-all"]')
+    button.click()
+    expect(button).to_have_text("Clear all?")
+    expect(button).not_to_have_text("Clear all?", timeout=6000)

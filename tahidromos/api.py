@@ -40,6 +40,10 @@ class SendRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class MoveRequest(BaseModel):
+    to: str = Field("Archive", max_length=64, description="Target folder; created if missing.")
+
+
 class ReplyRequest(BaseModel):
     user: str
     uid: str | None = None
@@ -550,6 +554,38 @@ def create_app(store: Store, router: Router, config: Config, started_at: float,
     def purge(user: str, mailbox: str = "INBOX") -> dict[str, Any]:
         address = resolve(user)
         return {"user": address, "mailbox": mailbox, "deleted": store.purge(address, mailbox)}
+
+    @app.delete("/messages", tags=["read"])
+    def purge_everything() -> dict[str, Any]:
+        """Clear every mailbox of every account. Accounts, credentials and folders are kept."""
+        return {"deleted": store.purge_all()}
+
+    @app.delete("/messages/{user}/{uid}", tags=["read"])
+    def delete_one(user: str, uid: str, mailbox: str = "INBOX") -> dict[str, Any]:
+        """Delete one message."""
+        address = resolve(user)
+        try:
+            number = int(uid)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="uid must be a number") from None
+        if not store.delete_message(address, number, mailbox):
+            raise HTTPException(status_code=404, detail=f"no message with uid {uid}")
+        return {"user": address, "mailbox": mailbox, "uid": uid, "deleted": True}
+
+    @app.post("/messages/{user}/{uid}/move", tags=["read"])
+    def move_one(user: str, uid: str, request: MoveRequest,
+                 mailbox: str = "INBOX") -> dict[str, Any]:
+        """Move one message to another folder — Archive by default, INBOX to restore it."""
+        address = resolve(user)
+        try:
+            number = int(uid)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="uid must be a number") from None
+        target = request.to.strip() or "Archive"
+        new_uid = store.move_message(address, number, mailbox, target)
+        if new_uid is None:
+            raise HTTPException(status_code=404, detail=f"no message with uid {uid}")
+        return {"user": address, "from": mailbox, "mailbox": target, "uid": str(new_uid)}
 
     @app.get("/threads/{user}", tags=["threads"])
     def threads(user: str, mailbox: str = "INBOX") -> dict[str, Any]:

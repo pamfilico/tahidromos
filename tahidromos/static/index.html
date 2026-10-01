@@ -152,6 +152,20 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .msg.unread .dot{position:absolute;left:5px;top:16px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 .msg .snippet{font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg .chips{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap}
+/* row actions: present on every row (touch has no hover), quiet until the row is pointed at */
+.msg{position:relative}
+.msg .snippet,.msg .chips{padding-right:62px}   /* the text ellipsizes before the action icons */
+.row-actions{position:absolute;right:10px;bottom:8px;display:flex;gap:4px;opacity:.35;transition:opacity .12s}
+.msg:hover .row-actions,.msg:focus-within .row-actions,.msg.active .row-actions{opacity:1}
+.ract{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--muted);
+  background:var(--panel);border:1px solid var(--line-2);cursor:pointer}
+.ract:hover{color:var(--text);background:var(--panel-2)}
+.ract.danger:hover{color:#fff;background:#d64545;border-color:#d64545}
+.ract svg,.iconbtn svg,.pill svg{width:14px;height:14px;display:block}
+.pill.danger:hover{color:#fff;background:#d64545;border-color:#d64545}
+.iconbtn.armed{background:#d64545;color:#fff;width:auto;padding:0 9px;font-size:11px;font-weight:650;white-space:nowrap}
+.folders{display:flex;gap:6px;padding:8px 14px;border-bottom:1px solid var(--line)}
+.folders .pill b{font-weight:650;margin-left:4px;color:var(--dim)}
 .chip{font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-2);
   border:1px solid var(--line);color:var(--dim);font-family:var(--mono)}
 .chip.thread{color:var(--accent);border-color:var(--accent-soft)}
@@ -281,6 +295,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
       <div class="grow"><h1>tahidromos</h1><p class="sub">ταχυδρόμος</p></div>
       <button class="iconbtn" id="theme" data-testid="theme-toggle" title="Toggle theme">◐</button>
       <button class="iconbtn" id="refresh" data-testid="refresh" title="Refresh now">↻</button>
+      <button class="iconbtn" id="clear-all" data-testid="clear-all" title="Clear all mail in every mailbox"></button>
     </div>
     <div class="meander" aria-hidden="true"></div>
     <div class="totals">
@@ -300,7 +315,11 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
       <h2 id="list-title" data-testid="list-title">Select a mailbox<span class="sub" id="list-sub" data-testid="list-subtitle">from the sidebar</span></h2>
       <button class="pill" id="compose" data-testid="compose-button" title="Write a new message from this mailbox">Compose</button>
       <button class="pill" id="group" data-testid="threads-toggle" title="Group messages into threads">Threads</button>
-      <button class="pill" id="purge" data-testid="empty-button" title="Delete every message in this mailbox">Empty</button>
+      <button class="pill" id="purge" data-testid="empty-button" title="Delete every message in this folder">Empty</button>
+    </div>
+    <div class="folders" data-testid="folders">
+      <button class="pill on" data-folder="INBOX" data-testid="folder-inbox">Inbox</button>
+      <button class="pill" data-folder="Archive" data-testid="folder-archive">Archive</button>
     </div>
     <div class="msgs" id="msgs" data-testid="message-list"></div>
   </section>
@@ -341,7 +360,20 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const state = {overview:null, user:null, uid:null, grouped:false, messages:[]};
+const state = {overview:null, user:null, uid:null, grouped:false, messages:[], mailbox:"INBOX"};
+
+/* Which folder of the selected mailbox is on screen. Every message URL carries it, so a message
+   opened from Archive is read, replied to and deleted THERE, not looked up in the Inbox. */
+const inFolder = (sep = "?") => `${sep}mailbox=${encodeURIComponent(state.mailbox)}`;
+const msgUrl = (uid, tail = "") =>
+  `/messages/${encodeURIComponent(state.user)}/${uid}${tail}${inFolder()}`;
+
+const ICON = {
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>',
+  archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></svg>',
+  restore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+  clear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M9.5 10.5l5 5M14.5 10.5l-5 5"/></svg>',
+};
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -439,7 +471,18 @@ async function select(user){
   $("list-sub").textContent = user;
   document.querySelectorAll(".box").forEach(b => b.classList.toggle("active", b.dataset.user === user));
   $("app").classList.remove("reading");
+  setFolder("INBOX", {load: false});
   await loadMessages();
+}
+
+function setFolder(name, {load = true} = {}){
+  state.mailbox = name; state.uid = null;
+  document.querySelectorAll("[data-folder]").forEach(b => b.classList.toggle("on", b.dataset.folder === name));
+  if(load){
+    $("app").classList.remove("reading");
+    $("reader").innerHTML = '<div class="empty"><div><img class="big" src="/logo.png" alt=""><h3>Select a message</h3></div></div>';
+    loadMessages();
+  }
 }
 
 const signature = (list) => list.map(m => `${m.uid}:${m.seen ? 1 : 0}`).join(",");
@@ -448,7 +491,7 @@ async function loadMessages({quiet = false} = {}){
   if(!state.user) return;
   if(!quiet) $("msgs").innerHTML = '<div class="empty"><span class="spin"></span></div>';
   try{
-    const data = await api(`/messages/${encodeURIComponent(state.user)}?limit=300`);
+    const data = await api(`/messages/${encodeURIComponent(state.user)}?limit=300${inFolder("&")}`);
     // Repainting on every poll would destroy the row the user is about to
     // click, so only redraw when the mailbox actually changed.
     if(quiet && signature(data.messages) === signature(state.messages)) return;
@@ -476,6 +519,12 @@ function messageRow(message){
     <div class="subject" data-testid="message-subject">${esc(message.subject || "(no subject)")}</div>
     <div class="snippet" data-testid="message-snippet">${esc(message.snippet || message.to.join(", "))}</div>
     ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+    <span class="row-actions">
+      ${state.mailbox === "Archive"
+        ? `<span class="ract" role="button" tabindex="0" data-act="restore" data-testid="row-restore" title="Move back to the Inbox">${ICON.restore}</span>`
+        : `<span class="ract" role="button" tabindex="0" data-act="archive" data-testid="row-archive" title="Archive">${ICON.archive}</span>`}
+      <span class="ract danger" role="button" tabindex="0" data-act="delete" data-testid="row-delete" title="Delete">${ICON.trash}</span>
+    </span>
   </button>`;
 }
 
@@ -483,8 +532,9 @@ function renderMessages(){
   const list = state.messages;
   if(!list.length){
     $("msgs").innerHTML = `<div class="empty"><div><img class="big" src="/logo.png" alt="">
-      <h3 data-testid="empty-mailbox">Empty mailbox</h3><p>Nothing has been delivered to
-      <code>${esc(state.user)}</code> yet.</p></div></div>`;
+      <h3 data-testid="empty-mailbox">${state.mailbox === "Archive" ? "Nothing archived" : "Empty mailbox"}</h3>
+      <p>${state.mailbox === "Archive" ? "Archived messages from" : "Nothing has been delivered to"}
+      <code>${esc(state.user)}</code> ${state.mailbox === "Archive" ? "land here." : "yet."}</p></div></div>`;
     return;
   }
   if(state.grouped){
@@ -503,7 +553,38 @@ function renderMessages(){
   } else {
     $("msgs").innerHTML = list.map(messageRow).join("");
   }
-  $("msgs").querySelectorAll(".msg").forEach(row => row.onclick = () => open(row.dataset.uid));
+  $("msgs").querySelectorAll(".msg").forEach(row => row.onclick = (event) => {
+    // The row is a <button>; its action icons are spans inside it, so they stop the click here.
+    const action = event.target.closest("[data-act]");
+    if(action){
+      event.stopPropagation(); event.preventDefault();
+      return messageAction(action.dataset.act, row.dataset.uid);
+    }
+    open(row.dataset.uid);
+  });
+}
+
+async function messageAction(act, uid){
+  try{
+    if(act === "delete"){
+      await api(msgUrl(uid), {method:"DELETE"});
+      toast("Deleted");
+    } else {
+      const to = act === "restore" ? "INBOX" : "Archive";
+      await api(msgUrl(uid, "/move"), {method:"POST", headers:{"content-type":"application/json"},
+                                         body: JSON.stringify({to})});
+      toast(act === "restore" ? "Moved to Inbox" : "Archived");
+    }
+  }catch(err){
+    return toast(`Could not ${act}: ${err.message}`);
+  }
+  state.messages = state.messages.filter(m => m.uid !== uid);
+  if(state.uid === uid){
+    state.uid = null;
+    $("app").classList.remove("reading");
+    $("reader").innerHTML = '<div class="empty"><div><img class="big" src="/logo.png" alt=""><h3>Select a message</h3></div></div>';
+  }
+  renderMessages(); loadOverview();
 }
 
 /* ------------------------------------------------------------- reader */
@@ -513,7 +594,7 @@ async function open(uid){
   $("app").classList.add("reading");
   $("reader").innerHTML = '<div class="empty"><span class="spin"></span></div>';
   try{
-    renderReader(await api(`/messages/${encodeURIComponent(state.user)}/${uid}`));
+    renderReader(await api(msgUrl(uid)));
   }catch(err){
     $("reader").innerHTML = `<div class="empty"><div><h3>Could not open</h3>
       <p>${esc(err.message)}</p></div></div>`;
@@ -558,6 +639,10 @@ function renderReader(message){
       <button class="pill" id="reply-all" data-testid="reply-all-button">Reply all</button>
       <button class="pill" id="forward" data-testid="forward-button">↪ Forward</button>
       <button class="pill" id="seen" data-testid="seen-toggle">${message.seen ? "Mark unread" : "Mark read"}</button>
+      ${state.mailbox === "Archive"
+        ? `<button class="pill" id="reader-move" data-act="restore" data-testid="reader-restore" title="Move back to the Inbox">${ICON.restore}</button>`
+        : `<button class="pill" id="reader-move" data-act="archive" data-testid="reader-archive" title="Archive">${ICON.archive}</button>`}
+      <button class="pill danger" id="reader-delete" data-testid="reader-delete" title="Delete">${ICON.trash}</button>
     </div>
     <div class="body" id="body" data-testid="message-body"><pre>${quoted}</pre></div></div>`;
 
@@ -569,14 +654,16 @@ function renderReader(message){
   loadSpamScore(message);
 
   $("save-eml").onclick = () =>
-    download(`/messages/${encodeURIComponent(state.user)}/${message.uid}/eml`,
+    download(msgUrl(message.uid, "/eml"),
              `message-${message.uid}.eml`);
 
+  $("reader-move").onclick = () => messageAction($("reader-move").dataset.act, message.uid);
+  $("reader-delete").onclick = () => messageAction("delete", message.uid);
   $("reply").onclick = () => openComposer({mode:"reply", message});
   $("reply-all").onclick = () => openComposer({mode:"reply", message, replyAll:true});
   $("forward").onclick = () => openComposer({mode:"forward", message});
   $("seen").onclick = async () => {
-    await api(`/messages/${encodeURIComponent(state.user)}/${message.uid}`, {
+    await api(msgUrl(message.uid), {
       method:"PATCH", headers:{"content-type":"application/json"},
       body: JSON.stringify({seen: !message.seen})});
     message.seen = !message.seen;
@@ -595,7 +682,7 @@ function renderReader(message){
     if(view === "html") showHtml(message);
     if(view === "raw"){
       const raw = await (await fetch(
-        `/messages/${encodeURIComponent(state.user)}/${message.uid}/raw`)).text();
+        msgUrl(message.uid, "/raw"))).text();
       plainBody(`<pre>${esc(raw)}</pre>`);
     }
   });
@@ -613,7 +700,7 @@ async function loadSpamScore(message){
   if(!slot) return;
   try{
     const result = await api(
-      `/messages/${encodeURIComponent(state.user)}/${message.uid}/spam`);
+      msgUrl(message.uid, "/spam"));
     const rules = result.hits.map(hit => `<div class="spam-rule" data-testid="spam-rule">
         <b>${hit.weight > 0 ? "+" : ""}${esc(hit.weight)}</b>
         <code>${esc(hit.rule)}</code>
@@ -699,7 +786,7 @@ function previewMarkup(message){
     <div class="stage" id="stage" data-testid="preview-stage">
       <div class="device" id="device-frame" data-testid="device-frame">
         <iframe id="preview-frame" data-testid="preview-frame" sandbox="allow-same-origin"
-                src="/messages/${encodeURIComponent(state.user)}/${message.uid}/html"
+                src="${msgUrl(message.uid, "/html")}"
                 title="Email preview"></iframe>
       </div>
     </div>
@@ -739,7 +826,7 @@ async function savePreviewPng(message){
   const device = deviceByName(preview.device);
   try{
     const response = await fetch(
-      `/messages/${encodeURIComponent(state.user)}/${message.uid}/html`);
+      msgUrl(message.uid, "/html"));
     const html = await response.text();
 
     const parsed = new DOMParser().parseFromString(html, "text/html");
@@ -797,7 +884,7 @@ function download(url, filename){
 
 async function saveHtml(message){
   const response = await fetch(
-    `/messages/${encodeURIComponent(state.user)}/${message.uid}/html`);
+    msgUrl(message.uid, "/html"));
   const blob = new Blob([await response.text()], {type: "text/html"});
   download(URL.createObjectURL(blob), `message-${message.uid}.html`);
 }
@@ -878,14 +965,14 @@ async function sendDraft(){
       if(!to){ $("composer-send").disabled = false; return toast("Who is it going to?"); }
       const result = await api("/forward", {
         method:"POST", headers:{"content-type":"application/json"},
-        body: JSON.stringify({user: state.user, uid: draft.message.uid,
+        body: JSON.stringify({user: state.user, uid: draft.message.uid, mailbox: state.mailbox,
                               to: to.split(/[,;\s]+/), note: body})});
       const carried = (result.attachments || []).filter(Boolean).length;
       toast(`Forwarded${carried ? ` with ${carried} attachment(s)` : ""}`);
     } else if(draft.mode === "reply"){
       const result = await api("/reply", {
         method:"POST", headers:{"content-type":"application/json"},
-        body: JSON.stringify({user: state.user, uid: draft.message.uid, text: body,
+        body: JSON.stringify({user: state.user, uid: draft.message.uid, mailbox: state.mailbox, text: body,
                               reply_all: draft.replyAll, mark_seen: false})});
       toast(`Replied — depth ${result.depth}`);
     } else {
@@ -925,7 +1012,7 @@ $("group").onclick = () => {
 };
 $("purge").onclick = async () => {
   if(!state.user) return toast("Select a mailbox first");
-  const result = await api(`/messages/${encodeURIComponent(state.user)}`, {method:"DELETE"});
+  const result = await api(`/messages/${encodeURIComponent(state.user)}${inFolder()}`, {method:"DELETE"});
   toast(`Deleted ${result.deleted} message${result.deleted === 1 ? "" : "s"}`);
   state.uid = null;
   $("reader").innerHTML =
@@ -933,6 +1020,32 @@ $("purge").onclick = async () => {
     '<h3>Mailbox emptied</h3></div></div>';
   loadMessages(); loadOverview();
 };
+document.querySelectorAll("[data-folder]").forEach(button =>
+  button.onclick = () => { if(state.user) setFolder(button.dataset.folder); });
+
+// Clear all is the one irreversible button that touches EVERY mailbox, so it asks twice — in the
+// page, not with confirm(): an armed button you can ignore beats a dialog that blocks the tab.
+$("clear-all").innerHTML = ICON.clear;
+$("clear-all").onclick = async () => {
+  const button = $("clear-all");
+  if(!button.classList.contains("armed")){
+    button.classList.add("armed"); button.textContent = "Clear all?";
+    button.dataset.testState = "armed";
+    clearTimeout(button._disarm);
+    button._disarm = setTimeout(() => { button.classList.remove("armed"); button.innerHTML = ICON.clear;
+                                        delete button.dataset.testState; }, 4000);
+    return;
+  }
+  clearTimeout(button._disarm);
+  button.classList.remove("armed"); button.innerHTML = ICON.clear; delete button.dataset.testState;
+  const result = await api("/messages", {method:"DELETE"});
+  toast(`Cleared ${result.deleted} message${result.deleted === 1 ? "" : "s"} from every mailbox`);
+  state.uid = null; state.messages = [];
+  $("app").classList.remove("reading");
+  $("reader").innerHTML = '<div class="empty"><div><img class="big" src="/logo.png" alt=""><h3>All mail cleared</h3></div></div>';
+  loadMessages(); loadOverview();
+};
+
 $("theme").onclick = () => {
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;

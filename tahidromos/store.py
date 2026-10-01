@@ -455,6 +455,46 @@ class Store:
                                                (mailbox_id,))
             return cursor.rowcount
 
+    def delete_message(self, address: str, uid: int, mailbox: str = "INBOX") -> bool:
+        """Remove one message for good. True when it existed."""
+        with self._write_lock:
+            mailbox_id = self.mailbox_id(address, mailbox)
+            if mailbox_id is None:
+                return False
+            cursor = self.connection().execute(
+                "DELETE FROM messages WHERE mailbox_id = ? AND uid = ?", (mailbox_id, uid))
+            return cursor.rowcount > 0
+
+    def move_message(self, address: str, uid: int, source: str = "INBOX",
+                     target: str = "Archive") -> int | None:
+        """Move one message to another folder (created on demand); return its UID there.
+
+        Like IMAP MOVE: the message gets a fresh UID in the target, keeps its flags and
+        envelope recipient, and is gone from the source. None when there was nothing to move.
+        """
+        if source == target:
+            return uid if self.raw(address, uid, source) is not None else None
+        with self._write_lock:
+            mailbox_id = self.mailbox_id(address, source)
+            if mailbox_id is None:
+                return None
+            connection = self.connection()
+            row = connection.execute(
+                "SELECT raw, flags, envelope_to FROM messages WHERE mailbox_id = ? AND uid = ?",
+                (mailbox_id, uid)).fetchone()
+            if row is None:
+                return None
+            new_uid = self.deliver(address, bytes(row["raw"]), mailbox=target,
+                                   flags=row["flags"], envelope_to=row["envelope_to"])
+            connection.execute("DELETE FROM messages WHERE mailbox_id = ? AND uid = ?",
+                               (mailbox_id, uid))
+            return new_uid
+
+    def purge_all(self) -> int:
+        """Delete every message in every mailbox of every account. Accounts and folders stay."""
+        with self._write_lock:
+            return self.connection().execute("DELETE FROM messages").rowcount
+
     def counts(self, address: str, mailbox: str = "INBOX") -> tuple[int, int]:
         mailbox_id = self.mailbox_id(address, mailbox)
         if mailbox_id is None:

@@ -533,6 +533,9 @@ Interactive docs at <http://localhost:8080/docs>.
 | `GET` | `…/spam` | Score it, with the rules that fired |
 | `PATCH` | `/messages/{user}/{uid}` | Mark read or unread |
 | `DELETE` | `/messages/{user}` | Empty a mailbox between test cases |
+| `DELETE` | `/messages/{user}/{uid}` | Delete one message (`?mailbox=Archive` for another folder) |
+| `POST` | `/messages/{user}/{uid}/move` | Move one message — `{"to": "Archive"}` (default), `{"to": "INBOX"}` to restore |
+| `DELETE` | `/messages` | Clear all: every message in every mailbox; accounts and folders stay |
 | `GET` | `/threads/{user}` | Grouped by `References` |
 | `POST` | `/send` · `/reply` · `/forward` | Send · reply · forward, headers handled for you |
 | `GET` | `/forwards` | Mailboxes that forward everything on |
