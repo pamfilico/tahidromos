@@ -193,13 +193,23 @@ def test_the_reader_is_usable_on_narrow_screens(ui, width):
     expect(reader).to_be_hidden()
 
 
+def test_a_stale_zoom_from_the_old_build_is_ignored(ui):
+    """The old build saved a fitted 0.25 under "zoom"; it must not shrink anything now."""
+    ui.evaluate("localStorage.setItem('zoom', '0.25')")
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "alice@tahidromos.test")
+    open_message(ui, "receipt")
+    expect(ui.locator('[data-testid="zoom-level"]')).to_have_text("100%")
+    assert ui.evaluate("localStorage.getItem('zoom')") is None
+
+
 def test_a_fitted_zoom_is_not_remembered_as_a_number(ui):
     """Fitting in a narrow window must not freeze every later preview at that size."""
     ui.set_viewport_size({"width": 900, "height": 900})
     select_mailbox(ui, "alice@tahidromos.test")
     open_message(ui, "receipt")
     ui.wait_for_timeout(500)
-    assert ui.evaluate("localStorage.getItem('zoom')") == "fit"
+    assert ui.evaluate("localStorage.getItem('previewZoom')") == "fit"
 
     ui.set_viewport_size({"width": 1500, "height": 950})
     ui.reload(wait_until="networkidle")

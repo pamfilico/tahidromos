@@ -657,7 +657,10 @@ const DEVICES = [
   {group:"Email client", name:"Apple Mail (700)",  w:700,  h:900},
 ];
 
-const storedZoom = localStorage.getItem("zoom");
+// "previewZoom", not "zoom": browsers that ran the old build hold a fitted 0.25 under "zoom",
+// which would read back as a zoom the user chose and keep every preview tiny.
+localStorage.removeItem("zoom");
+const storedZoom = localStorage.getItem("previewZoom");
 const preview = {
   device: localStorage.getItem("device") || "iPhone 15",
   // "fit" (the default) re-fits to the space available on every open and resize; a number is a
@@ -715,7 +718,7 @@ function applyDevice(){
   $("dims").textContent = `${device.w} × ${device.h}`;
   $("zoom-level").textContent = Math.round(preview.zoom * 100) + "%";
   localStorage.setItem("device", preview.device);
-  localStorage.setItem("zoom", preview.fit ? "fit" : String(preview.zoom));
+  localStorage.setItem("previewZoom", preview.fit ? "fit" : String(preview.zoom));
 }
 
 function fitPreview(){
