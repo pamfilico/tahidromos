@@ -139,10 +139,14 @@ def test_marking_read_moves_the_badge(ui, api, unique):
 
 
 def test_the_body_can_be_read_three_ways(ui):
+    """An HTML email opens RENDERED — that is what it is for; text and raw are a click away."""
     select_mailbox(ui, "alice@tahidromos.test")
     open_message(ui, "receipt")
 
-    expect(ui.locator('[data-testid="view-text"]')).to_have_class(re.compile(r"\bon\b"))
+    expect(ui.locator('[data-testid="view-html"]')).to_have_class(re.compile(r"\bon\b"))
+    expect(ui.locator('[data-testid="preview-frame"]')).to_be_visible()
+
+    ui.click('[data-testid="view-text"]')
     expect(ui.locator('[data-testid="message-body"]')).to_contain_text("Thanks")
 
     ui.click('[data-testid="view-raw"]')
@@ -150,6 +154,58 @@ def test_the_body_can_be_read_three_ways(ui):
 
     ui.click('[data-testid="view-html"]')
     expect(ui.locator('[data-testid="preview-frame"]')).to_be_visible()
+
+
+def test_a_plain_text_message_opens_on_its_text(ui, api, unique):
+    api.post("/send", {"from": "alice", "to": "dave", "subject": f"plain {unique}", "text": "just words"})
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "dave@tahidromos.test")
+    open_message(ui, f"plain {unique}")
+    expect(ui.locator('[data-testid="view-text"]')).to_have_class(re.compile(r"\bon\b"))
+    expect(ui.locator('[data-testid="view-html"]')).to_have_count(0)
+    expect(ui.locator('[data-testid="message-body"]')).to_contain_text("just words")
+
+
+@pytest.mark.parametrize("width", [1024, 900, 700])
+def test_the_reader_is_usable_on_narrow_screens(ui, width):
+    """Below 1180px the reader replaces the list. It used to land in a 0px grid track: the
+    message collapsed to a sliver and the preview shrank to 25%."""
+    ui.set_viewport_size({"width": width, "height": 900})
+    if width > 760:
+        select_mailbox(ui, "alice@tahidromos.test")
+    else:
+        # the sidebar is hidden on phones; pick the mailbox before narrowing
+        ui.set_viewport_size({"width": 1500, "height": 900})
+        select_mailbox(ui, "alice@tahidromos.test")
+        ui.set_viewport_size({"width": width, "height": 900})
+    open_message(ui, "receipt")
+
+    reader = ui.locator('[data-testid="reader"]')
+    box = reader.bounding_box()
+    assert box and box["width"] > width * 0.6, f"reader is {box and box['width']}px of {width}px"
+    expect(ui.locator('[data-testid="preview-frame"]')).to_be_visible()
+    ui.wait_for_timeout(500)
+    zoom = int(ui.locator('[data-testid="zoom-level"]').inner_text().rstrip("%"))
+    assert zoom >= 50, f"the preview was squeezed to {zoom}%"
+
+    ui.click('[data-testid="back-to-list"]')
+    expect(ui.locator('[data-testid="message-list"]')).to_be_visible()
+    expect(reader).to_be_hidden()
+
+
+def test_a_fitted_zoom_is_not_remembered_as_a_number(ui):
+    """Fitting in a narrow window must not freeze every later preview at that size."""
+    ui.set_viewport_size({"width": 900, "height": 900})
+    select_mailbox(ui, "alice@tahidromos.test")
+    open_message(ui, "receipt")
+    ui.wait_for_timeout(500)
+    assert ui.evaluate("localStorage.getItem('zoom')") == "fit"
+
+    ui.set_viewport_size({"width": 1500, "height": 950})
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "alice@tahidromos.test")
+    open_message(ui, "receipt")
+    expect(ui.locator('[data-testid="zoom-level"]')).to_have_text("100%")
 
 
 def test_threads_group_and_ungroup(ui):

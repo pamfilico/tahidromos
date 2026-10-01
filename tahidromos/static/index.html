@@ -35,10 +35,15 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 ::-webkit-scrollbar-thumb:hover{background:var(--dim);background-clip:content-box}
 
 .app{display:grid;grid-template-columns:290px 384px 1fr;height:100vh}
-@media (max-width:1180px){.app{grid-template-columns:252px 1fr}.reader{display:none}
-  .app.reading{grid-template-columns:252px 0 1fr}.app.reading .list{display:none}
-  .app.reading .reader{display:flex}}
-@media (max-width:760px){.app{grid-template-columns:1fr}.sidebar{display:none}}
+/* Narrow screens show the list OR the reader. A display:none child leaves the grid entirely, so
+   the reader takes the SECOND track — a "252px 0 1fr" template put it in the 0px one and the
+   message collapsed to a sliver at every width under 1180px. */
+@media (max-width:1180px){.app{grid-template-columns:252px 1fr}.app .reader{display:none}
+  .app.reading{grid-template-columns:252px 1fr}.app.reading .list{display:none}
+  .app.reading .reader{display:flex}
+  .app.reading .pill.back{display:inline-flex}}
+@media (max-width:760px){.app,.app.reading{grid-template-columns:1fr}.sidebar{display:none}}
+.pill.back{display:none}
 
 /* ---------------------------------------------------------------- sidebar */
 .sidebar{background:var(--panel);border-right:1px solid var(--line);display:flex;
@@ -543,8 +548,9 @@ function renderReader(message){
     <div id="spam-slot"></div>
     ${chain ? `<h3 class="section-label">References chain</h3>${chain}` : ""}
     <div class="bar" style="border:0;padding:0 0 10px;min-height:0">
-      <button class="pill on" data-view="text" data-testid="view-text">Text</button>
-      ${message.html ? '<button class="pill" data-view="html" data-testid="view-html">HTML</button>' : ""}
+      <button class="pill back" id="back" data-testid="back-to-list" title="Back to the list">← List</button>
+      <button class="pill ${message.html ? "" : "on"}" data-view="text" data-testid="view-text">Text</button>
+      ${message.html ? '<button class="pill on" data-view="html" data-testid="view-html">HTML</button>' : ""}
       <button class="pill" data-view="raw" data-testid="view-raw">Raw</button>
       <button class="pill" id="save-eml" data-testid="download-eml" title="Download the message as .eml">.eml</button>
       <span style="flex:1"></span>
@@ -554,6 +560,11 @@ function renderReader(message){
       <button class="pill" id="seen" data-testid="seen-toggle">${message.seen ? "Mark unread" : "Mark read"}</button>
     </div>
     <div class="body" id="body" data-testid="message-body"><pre>${quoted}</pre></div></div>`;
+
+  // A designed email is the point of reading it here: open on the rendered HTML when there is
+  // one, the plain text otherwise. Text and Raw stay one click away.
+  if(message.html) showHtml(message);
+  $("back").onclick = () => { $("app").classList.remove("reading"); state.uid = null; renderMessages(); };
 
   loadSpamScore(message);
 
@@ -578,17 +589,22 @@ function renderReader(message){
     $("reader").querySelectorAll("[data-view]").forEach(b => b.classList.remove("on"));
     button.classList.add("on");
     const view = button.dataset.view;
-    if(view === "text") $("body").innerHTML = `<pre>${quoted}</pre>`;
-    if(view === "html"){
-      $("body").outerHTML = `<div class="body" id="body" style="padding:0;border:0;background:none">${previewMarkup(message)}</div>`;
-      wirePreview(message);
-    }
+    const plainBody = (html) => { $("body").outerHTML =
+      `<div class="body" id="body" data-testid="message-body">${html}</div>`; };
+    if(view === "text") plainBody(`<pre>${quoted}</pre>`);
+    if(view === "html") showHtml(message);
     if(view === "raw"){
       const raw = await (await fetch(
         `/messages/${encodeURIComponent(state.user)}/${message.uid}/raw`)).text();
-      $("body").innerHTML = `<pre>${esc(raw)}</pre>`;
+      plainBody(`<pre>${esc(raw)}</pre>`);
     }
   });
+}
+
+function showHtml(message){
+  $("body").outerHTML = `<div class="body" id="body" data-testid="message-body"
+      style="padding:0;border:0;background:none">${previewMarkup(message)}</div>`;
+  wirePreview(message);
 }
 
 /* ------------------------------------------------------------- spam */
@@ -641,9 +657,13 @@ const DEVICES = [
   {group:"Email client", name:"Apple Mail (700)",  w:700,  h:900},
 ];
 
+const storedZoom = localStorage.getItem("zoom");
 const preview = {
   device: localStorage.getItem("device") || "iPhone 15",
-  zoom: parseFloat(localStorage.getItem("zoom") || "1"),
+  // "fit" (the default) re-fits to the space available on every open and resize; a number is a
+  // zoom the user chose with − / + and is kept as chosen.
+  fit: storedZoom === null || storedZoom === "fit" || !(parseFloat(storedZoom) > 0),
+  zoom: parseFloat(storedZoom) > 0 ? parseFloat(storedZoom) : 1,
 };
 
 function deviceByName(name){
@@ -695,14 +715,16 @@ function applyDevice(){
   $("dims").textContent = `${device.w} × ${device.h}`;
   $("zoom-level").textContent = Math.round(preview.zoom * 100) + "%";
   localStorage.setItem("device", preview.device);
-  localStorage.setItem("zoom", String(preview.zoom));
+  localStorage.setItem("zoom", preview.fit ? "fit" : String(preview.zoom));
 }
 
 function fitPreview(){
   const device = deviceByName(preview.device);
   const stage = $("stage");
   if(!stage) return;
+  preview.fit = true;
   const available = stage.clientWidth - 36;
+  if(available < 120) return;   // not laid out yet (hidden column): keep the last good zoom
   preview.zoom = Math.min(1, Math.max(0.25, available / device.w));
   applyDevice();
 }
@@ -779,14 +801,20 @@ async function saveHtml(message){
 
 function wirePreview(message){
   applyDevice();
-  $("device").onchange = (event) => { preview.device = event.target.value; applyDevice(); };
-  $("zoom-in").onclick = () => { preview.zoom = Math.min(2, preview.zoom + 0.1); applyDevice(); };
-  $("zoom-out").onclick = () => { preview.zoom = Math.max(0.25, preview.zoom - 0.1); applyDevice(); };
+  $("device").onchange = (event) => {
+    preview.device = event.target.value; applyDevice(); if(preview.fit) fitPreview(); };
+  $("zoom-in").onclick = () => {
+    preview.fit = false; preview.zoom = Math.min(2, preview.zoom + 0.1); applyDevice(); };
+  $("zoom-out").onclick = () => {
+    preview.fit = false; preview.zoom = Math.max(0.25, preview.zoom - 0.1); applyDevice(); };
   $("zoom-fit").onclick = fitPreview;
   $("save-png").onclick = () => savePreviewPng(message);
   $("save-html").onclick = () => saveHtml(message);
-  $("preview-frame").onload = () => { if(preview.zoom === 1) fitPreview(); };
+  $("preview-frame").onload = () => { if(preview.fit) fitPreview(); };
+  if(preview.fit) requestAnimationFrame(fitPreview);
 }
+
+window.addEventListener("resize", () => { if(preview.fit && $("stage")) fitPreview(); });
 
 /* ------------------------------------------------------------- composer */
 let draft = null;
