@@ -187,6 +187,45 @@ References  : 5 ancestors
 Both scripts use nothing but `smtplib` and `imaplib`, so they double as worked
 examples of how your own app should thread its replies.
 
+## The inbox in the browser
+
+Open http://localhost:8080 (or wherever your compose maps port 8080). The **?** button in
+the sidebar explains everything below in place.
+
+* **Apps and mailboxes.** The sidebar groups mailboxes by app — one block per app in
+  `tahidromos.d/apps.yml`, each with its own domain. Click an app to collapse it (remembered).
+  Badges are unread counts; `BOT` answers automatically, `SMTP` shows the app's own login,
+  `CAUGHT` is the capture mailbox, `NEW` a mailbox created by its first delivery.
+* **Conversations, top-down.** By default the list shows each conversation with its first
+  email on top and every reply nested under it, oldest to newest, indented by how deep it
+  replies — so a chat that went back and forth by email reads like the chat. Click the
+  conversation header to fold the replies away; **Threads** switches to a flat list
+  (remembered). An open message shows the whole conversation above it in the same order;
+  click any entry to jump to it.
+* **Rendered first.** A message with HTML opens rendered, in a device frame (phones, tablets,
+  the widths Outlook, Gmail and Apple Mail break at), with zoom that fits the space; **Text**,
+  **Raw** and **.eml** are one click away.
+* **Inbox / Archive.** Every row has archive and delete icons (also in the open message);
+  archived mail lives in the Archive tab and moves back with one click. **Empty** clears the
+  folder on screen. The trash button at the top of the sidebar is **Clear all** — every
+  message in every mailbox, accounts kept — and asks for a second click.
+* **Links to exactly what you see.** The address bar always holds the whole view:
+
+  ```
+  http://localhost:8080/?app=rentfast&user=customer%40rentfast.test&folder=INBOX&uid=14&view=html
+  ```
+
+  | parameter | meaning |
+  | --- | --- |
+  | `app` | the app (sidebar block); alone, it opens that app's first mailbox |
+  | `user` | the mailbox address |
+  | `folder` | `INBOX` (default, omitted) or `Archive` |
+  | `uid` | the open message — its UID in that folder |
+  | `view` | `html`, `text` or `raw` |
+
+  Paste it into a bug report, or to an agent, and it reopens the same message in the same
+  view. **Link** in the reader copies it.
+
 ## Three ways to reply
 
 ### 1. By hand, in the browser
@@ -197,8 +236,7 @@ construction — the composer shows you exactly what it will hang the reply onto
 
 ![Replying from the browser](docs/screenshots/reply-composer.png)
 
-Messages group into threads with one click, and every message shows its
-position in the chain:
+Every message shows its position in the chain:
 
 ![Threads](docs/screenshots/threads.png)
 
@@ -672,6 +710,7 @@ make test-image   # pull the published image and drive that
 | `tahidromos/bot.py` | Auto-responders |
 | `tahidromos/config.py` | Multi-app configuration |
 | `tahidromos/api.py` | REST API and the mailbox browser |
+| `tahidromos/static/index.html` | The inbox UI: one file of plain HTML/CSS/JS, served as-is — no framework, no build step |
 | `tahidromos/emailtemplates.py` | Template rendering, no template engine needed |
 | `tahidromos/extract.py` | Quote stripping, links, one-time codes |
 | `tahidromos/scenarios.py` | Ten reproducible awkward messages |

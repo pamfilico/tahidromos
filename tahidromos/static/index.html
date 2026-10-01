@@ -172,10 +172,44 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .chip.warn{color:var(--capture);border-color:rgba(251,191,36,.3)}
 
 .thread-group{border-bottom:1px solid var(--line-2)}
+/* conversations: the first email on top, every reply under it, oldest → newest */
+.thread-head{display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;
+  background:none;border:0;color:var(--dim);font:inherit}
+.thread-head .caret{font-size:10px;transition:transform .18s;flex:none}
+.thread-group.collapsed .caret{transform:rotate(-90deg)}
+.thread-group.collapsed .msg.reply{display:none}
+.thread-head .t-subject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread-head .t-count{flex:none;color:var(--accent)}
+.msg.reply{padding-left:calc(28px + var(--level,1) * 14px)}
+.msg.reply::before{content:"↳";position:absolute;left:calc(12px + var(--level,1) * 14px);top:11px;
+  color:var(--accent);font-size:12px}
+.convo{display:flex;flex-direction:column;gap:0;margin-bottom:18px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);overflow:hidden}
+.convo-item{display:flex;gap:10px;align-items:flex-start;text-align:left;width:100%;padding:9px 12px;
+  background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);cursor:pointer;font:inherit}
+.convo-item:last-child{border-bottom:0}
+.convo-item:hover{background:var(--panel-2)}
+.convo-item.current{background:var(--accent-soft, rgba(80,140,255,.12))}
+.convo-item .n{width:20px;height:20px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:10px;color:var(--muted);flex:none;margin-top:1px}
+.convo-item.current .n{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.convo-item .who{font-size:12px;font-weight:600}
+.convo-item .at{font-size:11px;color:var(--dim);margin-left:6px;font-weight:400}
+.convo-item .what{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:100%}
+.convo-item > div{min-width:0;flex:1}
+/* help */
+.help{padding:6px 22px 20px;overflow-y:auto;font-size:13px;line-height:1.6}
+.help h4{margin:18px 0 6px;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--accent)}
+.help p{margin:0 0 8px}
+.help ul{margin:0 0 8px;padding-left:18px}
+.help li{margin:2px 0}
+.help code{font:12px var(--mono);background:var(--panel-2);padding:1px 5px;border-radius:5px}
+.help .kbd{font:11px var(--mono);border:1px solid var(--line-2);border-radius:5px;padding:0 5px}
 .thread-head{padding:8px 14px 4px;font-size:10.5px;color:var(--dim);text-transform:uppercase;
   letter-spacing:.6px;background:var(--panel-2)}
-.thread-group .msg{padding-left:26px}
-.thread-group .msg::after{content:"";position:absolute;left:16px;top:0;bottom:0;width:1px;background:var(--line-2)}
+.thread-group .msg.reply::after{content:"";position:absolute;left:calc(8px + var(--level,1) * 14px);
+  top:0;bottom:0;width:1px;background:var(--line-2)}
 
 /* ---------------------------------------------------------------- reader */
 .reader{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
@@ -296,6 +330,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
       <button class="iconbtn" id="theme" data-testid="theme-toggle" title="Toggle theme">◐</button>
       <button class="iconbtn" id="refresh" data-testid="refresh" title="Refresh now">↻</button>
       <button class="iconbtn" id="clear-all" data-testid="clear-all" title="Clear all mail in every mailbox"></button>
+      <button class="iconbtn" id="help" data-testid="help-button" title="What is this, and how does it work?">?</button>
     </div>
     <div class="meander" aria-hidden="true"></div>
     <div class="totals">
@@ -314,7 +349,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
     <div class="bar">
       <h2 id="list-title" data-testid="list-title">Select a mailbox<span class="sub" id="list-sub" data-testid="list-subtitle">from the sidebar</span></h2>
       <button class="pill" id="compose" data-testid="compose-button" title="Write a new message from this mailbox">Compose</button>
-      <button class="pill" id="group" data-testid="threads-toggle" title="Group messages into threads">Threads</button>
+      <button class="pill" id="group" data-testid="threads-toggle" title="Conversations: replies nested under their first email. Click for a flat list.">Threads</button>
       <button class="pill" id="purge" data-testid="empty-button" title="Delete every message in this folder">Empty</button>
     </div>
     <div class="folders" data-testid="folders">
@@ -332,6 +367,79 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
          and it will reply — then reply to that, and it will reply again.</p>
     </div></div>
   </section>
+</div>
+
+<div class="sheet" id="help-sheet" data-testid="help-sheet">
+  <div class="composer" data-testid="help-dialog" role="dialog" aria-labelledby="help-title">
+    <header>
+      <h3 id="help-title">How tahidromos works</h3>
+      <button class="iconbtn" id="help-close" data-testid="help-close" title="Close">✕</button>
+    </header>
+    <div class="help" data-testid="help-body">
+      <p><b>tahidromos</b> (ταχυδρόμος, "postman") is a real mail server for development. Your apps
+      send to it over SMTP exactly as they would in production, and nothing ever leaves this
+      machine. Every message lands in a mailbox you can read here, over IMAP, or through the API.</p>
+
+      <h4>Apps and mailboxes</h4>
+      <ul>
+        <li>The sidebar groups mailboxes by <b>app</b> — one block per app in
+          <code>tahidromos.d/apps.yml</code>, each with its own domain (e.g. <code>@rentfast.test</code>).
+          Click an app's name to <b>collapse or expand</b> it; that is remembered.</li>
+        <li>The badge is the unread count. <span class="kbd">BOT</span> mailboxes reply automatically
+          (echo), <span class="kbd">SMTP</span> shows the app's own login (user/password under it),
+          <span class="kbd">CAUGHT</span> is the capture mailbox, <span class="kbd">NEW</span> a mailbox
+          that appeared on its own.</li>
+        <li>Unknown addresses on a local domain are <b>created on first delivery</b>, so
+          <code>anything-123@yourapp.test</code> just works.</li>
+        <li>Mail to a domain that is not local is <b>captured</b> into <code>captured@…</code> — it can never
+          escape to the internet. Apps that rewrite real addresses for dev (e.g. RentFast's
+          <code>DEV_MAIL_REWRITE_DOMAIN</code>) turn <code>you@gmail.com</code> into
+          <code>you_at_gmail.com@rentfast.test</code>.</li>
+      </ul>
+
+      <h4>Reading</h4>
+      <ul>
+        <li>An email with HTML opens <b>rendered</b>, inside a phone frame; pick other devices and widths,
+          zoom, or save it as PNG/HTML. <b>Text</b>, <b>Raw</b> and <b>.eml</b> are one click away.</li>
+        <li>Every message gets a <b>spam score</b> with the rules that fired.</li>
+        <li>Reading never marks a message read — use <b>Mark read</b> — so a test waiting on an unread
+          count is never disturbed by you browsing.</li>
+      </ul>
+
+      <h4>Conversations</h4>
+      <ul>
+        <li>Replies are linked by their <code>In-Reply-To</code>/<code>References</code> headers. The list
+          shows each conversation <b>with its first email on top and every reply nested under it, oldest
+          to newest</b> — read it top-down. Click the conversation header to fold the replies away;
+          <b>Threads</b> switches to a flat list.</li>
+        <li>An open message shows the whole <b>Conversation</b> above it, in the same order; click any
+          entry to jump to it.</li>
+        <li><b>Reply</b>, <b>Reply all</b> and <b>Forward</b> send real mail from the mailbox you are in,
+          threaded correctly. If an app has an <b>inbound webhook</b> (e.g. RentFast chat at
+          <code>chat+…@rentfast.test</code>), your reply is posted to it — that is how "reply to the email"
+          lands in an in-app chat.</li>
+      </ul>
+
+      <h4>Tidying up</h4>
+      <ul>
+        <li>Each row has <b>archive</b> and <b>delete</b> icons (also in the open message). Archived mail
+          lives in the <b>Archive</b> tab and can be moved back.</li>
+        <li><b>Empty</b> clears the folder on screen. The trash button at the top of the sidebar is
+          <b>Clear all</b> — every message in every mailbox; it asks for a second click. Accounts and
+          logins stay.</li>
+      </ul>
+
+      <h4>From code</h4>
+      <ul>
+        <li>SMTP <code>:25</code> needs no login (what apps use); submission <code>:587</code> takes the
+          app's SMTP user; IMAP <code>:143</code>. On your host they are mapped by your compose file.</li>
+        <li>The REST API is at <a href="/docs" target="_blank" rel="noreferrer">/docs</a>. In tests,
+          <code>POST /wait</code> blocks until a matching mail arrives and returns it with its links and
+          one-time code already extracted — no sleeps, no polling.</li>
+      </ul>
+      <p style="color:var(--dim);margin-top:14px">Press <span class="kbd">Esc</span> to close.</p>
+    </div>
+  </div>
 </div>
 
 <div class="sheet" id="sheet" data-testid="composer-sheet">
@@ -360,7 +468,40 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const state = {overview:null, user:null, uid:null, grouped:false, messages:[], mailbox:"INBOX"};
+const state = {overview:null, user:null, uid:null, messages:[], mailbox:"INBOX",
+  // Conversations (replies nested under their first email) are the default view; "Threads" flattens.
+  grouped: localStorage.getItem("grouped") !== "0",
+  folded: new Set()};
+
+/* The URL is the whole view — ?app=&user=&folder=&uid=&view= — so a link to exactly what you are
+   looking at can be pasted anywhere (a bug report, a chat with an agent) and reopens it here. */
+function appOf(address){
+  return state.overview?.apps?.find(a => (a.mailboxes || []).some(m => m.address === address))?.name || "";
+}
+function syncUrl(){
+  const q = new URLSearchParams();
+  if(state.user){
+    const app = appOf(state.user);
+    if(app) q.set("app", app);
+    q.set("user", state.user);
+  }
+  if(state.mailbox && state.mailbox !== "INBOX") q.set("folder", state.mailbox);
+  if(state.uid){
+    q.set("uid", state.uid);
+    if(state.view) q.set("view", state.view);
+  }
+  const query = q.toString();
+  history.replaceState(null, "", query ? `?${query}` : location.pathname);
+}
+
+const time = (m) => Date.parse(m.internal_date || "") || 0;
+const threadKey = (m) => m.thread_root || m.message_id || `uid-${m.uid}`;
+/** The messages of one conversation in this folder, oldest first — the order to read it in. */
+function conversationOf(message){
+  const key = threadKey(message);
+  return state.messages.filter(m => threadKey(m) === key)
+    .sort((a, b) => time(a) - time(b) || Number(a.uid) - Number(b.uid));
+}
 
 /* Which folder of the selected mailbox is on screen. Every message URL carries it, so a message
    opened from Archive is read, replied to and deleted THERE, not looked up in the Inbox. */
@@ -472,12 +613,16 @@ async function select(user){
   document.querySelectorAll(".box").forEach(b => b.classList.toggle("active", b.dataset.user === user));
   $("app").classList.remove("reading");
   setFolder("INBOX", {load: false});
+  syncUrl();
+  document.querySelector(`[data-testid="mailbox"][data-address="${CSS.escape(user)}"]`)
+    ?.scrollIntoView({block: "nearest"});
   await loadMessages();
 }
 
 function setFolder(name, {load = true} = {}){
   state.mailbox = name; state.uid = null;
   document.querySelectorAll("[data-folder]").forEach(b => b.classList.toggle("on", b.dataset.folder === name));
+  syncUrl();
   if(load){
     $("app").classList.remove("reading");
     $("reader").innerHTML = '<div class="empty"><div><img class="big" src="/logo.png" alt=""><h3>Select a message</h3></div></div>';
@@ -503,14 +648,15 @@ async function loadMessages({quiet = false} = {}){
   }
 }
 
-function messageRow(message){
+function messageRow(message, {level = 0} = {}){
   const chips = [];
   if(message.in_reply_to) chips.push('<span class="chip thread" data-testid="chip-reply">↩ reply</span>');
   if(message.depth) chips.push(`<span class="chip" data-testid="chip-depth" data-depth="${message.depth}">depth ${message.depth}</span>`);
   if(message.cc?.length) chips.push(`<span class="chip">cc ${message.cc.length}</span>`);
   if(message.envelope_to && !message.to.includes(message.envelope_to))
     chips.push(`<span class="chip warn">for ${esc(message.envelope_to)}</span>`);
-  return `<button class="msg ${message.seen ? "" : "unread"} ${state.uid === message.uid ? "active" : ""}"
+  return `<button class="msg ${message.seen ? "" : "unread"} ${state.uid === message.uid ? "active" : ""} ${level ? "reply" : ""}"
+                  ${level ? `style="--level:${level}" data-level="${level}"` : ""}
                   data-testid="message-row" data-uid="${esc(message.uid)}"
                   data-seen="${message.seen}" data-subject="${esc(message.subject || "")}">
     <span class="dot"></span>
@@ -538,18 +684,39 @@ function renderMessages(){
     return;
   }
   if(state.grouped){
+    // One block per conversation, newest activity first; inside it the first email on top and the
+    // replies under it in the order they were sent, indented by how deep they reply.
     const threads = new Map();
     for(const message of list){
-      const key = message.thread_root || message.message_id;
+      const key = threadKey(message);
       if(!threads.has(key)) threads.set(key, []);
       threads.get(key).push(message);
     }
-    $("msgs").innerHTML = [...threads.values()].map(group => {
-      const ordered = group.slice().sort((a,b) => (a.depth||0) - (b.depth||0));
-      return `<div class="thread-group" data-testid="thread-group"><div class="thread-head" data-testid="thread-header">
-        ${esc(ordered[0].subject || "(no subject)")} · ${group.length} message${group.length>1?"s":""}
-        </div>${ordered.map(messageRow).join("")}</div>`;
+    const blocks = [...threads.entries()].map(([key, group]) => {
+      const ordered = group.slice().sort((a, b) => time(a) - time(b) || Number(a.uid) - Number(b.uid));
+      return {key, ordered, latest: time(ordered[ordered.length - 1])};
+    }).sort((a, b) => b.latest - a.latest);
+
+    $("msgs").innerHTML = blocks.map(({key, ordered}) => {
+      if(ordered.length === 1) return messageRow(ordered[0]);
+      const base = Math.min(...ordered.map(m => m.depth || 0));
+      const rows = ordered.map((m, index) => messageRow(m, {
+        level: index === 0 ? 0 : Math.max(1, Math.min(3, (m.depth || 0) - base)) })).join("");
+      const unread = ordered.filter(m => !m.seen).length;
+      return `<div class="thread-group ${state.folded.has(key) ? "collapsed" : ""}" data-testid="thread-group"
+                   data-thread="${esc(key)}" data-count="${ordered.length}">
+        <button class="thread-head" data-testid="thread-header" title="Fold or unfold the replies">
+          <span class="caret">▾</span>
+          <span class="t-subject">${esc(ordered[0].subject || "(no subject)")}</span>
+          <span class="t-count">${ordered.length} messages${unread ? ` · ${unread} unread` : ""}</span>
+        </button>${rows}</div>`;
     }).join("");
+    $("msgs").querySelectorAll(".thread-head").forEach(head => head.onclick = () => {
+      const group = head.closest(".thread-group");
+      const key = group.dataset.thread;
+      group.classList.toggle("collapsed");
+      if(group.classList.contains("collapsed")) state.folded.add(key); else state.folded.delete(key);
+    });
   } else {
     $("msgs").innerHTML = list.map(messageRow).join("");
   }
@@ -581,6 +748,7 @@ async function messageAction(act, uid){
   state.messages = state.messages.filter(m => m.uid !== uid);
   if(state.uid === uid){
     state.uid = null;
+    syncUrl();
     $("app").classList.remove("reading");
     $("reader").innerHTML = '<div class="empty"><div><img class="big" src="/logo.png" alt=""><h3>Select a message</h3></div></div>';
   }
@@ -590,6 +758,7 @@ async function messageAction(act, uid){
 /* ------------------------------------------------------------- reader */
 async function open(uid){
   state.uid = uid;
+  syncUrl();
   renderMessages();
   $("app").classList.add("reading");
   $("reader").innerHTML = '<div class="empty"><span class="spin"></span></div>';
@@ -627,6 +796,7 @@ function renderReader(message){
       <dt>Thread</dt><dd data-testid="meta-thread" data-depth="${message.depth}">${references.length + 1} message${references.length ? "s" : ""}, depth ${message.depth}</dd>
     </dl></div>
     <div id="spam-slot"></div>
+    ${conversationPanel(message)}
     ${chain ? `<h3 class="section-label">References chain</h3>${chain}` : ""}
     <div class="bar" style="border:0;padding:0 0 10px;min-height:0">
       <button class="pill back" id="back" data-testid="back-to-list" title="Back to the list">← List</button>
@@ -634,6 +804,7 @@ function renderReader(message){
       ${message.html ? '<button class="pill on" data-view="html" data-testid="view-html">HTML</button>' : ""}
       <button class="pill" data-view="raw" data-testid="view-raw">Raw</button>
       <button class="pill" id="save-eml" data-testid="download-eml" title="Download the message as .eml">.eml</button>
+      <button class="pill" id="copy-link" data-testid="copy-link" title="Copy a link to exactly this view">Link</button>
       <span style="flex:1"></span>
       <button class="pill" id="reply" data-testid="reply-button">↩ Reply</button>
       <button class="pill" id="reply-all" data-testid="reply-all-button">Reply all</button>
@@ -648,15 +819,24 @@ function renderReader(message){
 
   // A designed email is the point of reading it here: open on the rendered HTML when there is
   // one, the plain text otherwise. Text and Raw stay one click away.
+  state.view = message.html ? "html" : "text";
   if(message.html) showHtml(message);
-  $("back").onclick = () => { $("app").classList.remove("reading"); state.uid = null; renderMessages(); };
+  $("back").onclick = () => { $("app").classList.remove("reading"); state.uid = null; renderMessages(); syncUrl(); };
 
   loadSpamScore(message);
+
 
   $("save-eml").onclick = () =>
     download(msgUrl(message.uid, "/eml"),
              `message-${message.uid}.eml`);
 
+  $("copy-link").onclick = async () => {
+    try{ await navigator.clipboard.writeText(location.href); toast("Link copied"); }
+    catch{ toast(location.href); }
+  };
+  $("reader").querySelectorAll(".convo-item").forEach(item => item.onclick = () => {
+    if(item.dataset.uid !== String(message.uid)) open(item.dataset.uid);
+  });
   $("reader-move").onclick = () => messageAction($("reader-move").dataset.act, message.uid);
   $("reader-delete").onclick = () => messageAction("delete", message.uid);
   $("reply").onclick = () => openComposer({mode:"reply", message});
@@ -676,6 +856,7 @@ function renderReader(message){
     $("reader").querySelectorAll("[data-view]").forEach(b => b.classList.remove("on"));
     button.classList.add("on");
     const view = button.dataset.view;
+    state.view = view; syncUrl();
     const plainBody = (html) => { $("body").outerHTML =
       `<div class="body" id="body" data-testid="message-body">${html}</div>`; };
     if(view === "text") plainBody(`<pre>${quoted}</pre>`);
@@ -686,6 +867,25 @@ function renderReader(message){
       plainBody(`<pre>${esc(raw)}</pre>`);
     }
   });
+
+  // A view asked for by the URL (?view=text|raw|html) — applied once the buttons above are wired.
+  if(state.pendingView){
+    const wanted = state.pendingView; state.pendingView = null;
+    if(wanted !== state.view) $("reader").querySelector(`[data-view="${CSS.escape(wanted)}"]`)?.click();
+  }
+  syncUrl();
+}
+
+function conversationPanel(message){
+  const members = conversationOf(message);
+  if(members.length < 2) return "";
+  const items = members.map((m, index) => `<button class="convo-item ${m.uid === message.uid ? "current" : ""}"
+      data-testid="conversation-item" data-uid="${esc(m.uid)}" data-current="${m.uid === message.uid}">
+      <span class="n">${index + 1}</span>
+      <div><span class="who">${esc(nameOf(m.from))}<span class="at">${esc(when(m.internal_date))}</span></span>
+        <span class="what">${esc(m.snippet || m.subject || "")}</span></div></button>`).join("");
+  return `<h3 class="section-label">Conversation · ${members.length} messages, oldest first</h3>
+    <div class="convo" data-testid="conversation">${items}</div>`;
 }
 
 function showHtml(message){
@@ -998,15 +1198,24 @@ $("composer-send").onclick = sendDraft;
 $("composer-cancel").onclick = closeComposer;
 $("composer-close").onclick = closeComposer;
 $("sheet").onclick = (event) => { if(event.target === $("sheet")) closeComposer(); };
+const openHelp = () => $("help-sheet").classList.add("open");
+const closeHelp = () => $("help-sheet").classList.remove("open");
+$("help").onclick = openHelp;
+$("help-close").onclick = closeHelp;
+$("help-sheet").onclick = (event) => { if(event.target === $("help-sheet")) closeHelp(); };
+
 document.addEventListener("keydown", (event) => {
+  if(event.key === "Escape" && $("help-sheet").classList.contains("open")) return closeHelp();
   if(event.key === "Escape" && draft) closeComposer();
   if((event.metaKey || event.ctrlKey) && event.key === "Enter" && draft) sendDraft();
 });
 
 /* ------------------------------------------------------------- controls */
 $("refresh").onclick = () => { loadOverview(); loadMessages(); toast("Refreshed"); };
+$("group").classList.toggle("on", state.grouped);
 $("group").onclick = () => {
   state.grouped = !state.grouped;
+  localStorage.setItem("grouped", state.grouped ? "1" : "0");
   $("group").classList.toggle("on", state.grouped);
   renderMessages();
 };
@@ -1055,8 +1264,23 @@ document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark"
 
 (async function start(){
   await loadOverview();
-  const first = state.overview?.apps?.[0]?.mailboxes?.[0];
-  if(first) select(first.address);
+  const q = new URLSearchParams(location.search);
+  let user = q.get("user");
+  if(!user && q.get("app")){
+    user = state.overview?.apps?.find(a => a.name === q.get("app"))?.mailboxes?.[0]?.address || null;
+  }
+  if(user){
+    await select(user);
+    const folder = q.get("folder");
+    if(folder && folder !== "INBOX"){ setFolder(folder, {load: false}); await loadMessages(); }
+    if(q.get("uid")){
+      state.pendingView = q.get("view");
+      await open(q.get("uid"));
+    }
+  } else {
+    const first = state.overview?.apps?.[0]?.mailboxes?.[0];
+    if(first) select(first.address);
+  }
   setInterval(() => { loadOverview(); if(state.user) loadMessages({quiet:true}); }, 5000);
 })();
 </script>

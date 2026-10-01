@@ -218,16 +218,87 @@ def test_a_fitted_zoom_is_not_remembered_as_a_number(ui):
     expect(ui.locator('[data-testid="zoom-level"]')).to_have_text("100%")
 
 
-def test_threads_group_and_ungroup(ui):
-    select_mailbox(ui, "alice@tahidromos.test")
-    expect(ui.locator('[data-testid="thread-group"]')).to_have_count(0)
+def _conversation(api, unique, to="dave"):
+    """Three messages of ONE conversation in one mailbox: the first email and two replies."""
+    root = f"<conv-{unique}@tahidromos.test>"
+    first = f"<conv-{unique}-1@tahidromos.test>"
+    api.post("/send", {"from": "alice", "to": to, "subject": f"Trip {unique}", "text": "first: hello",
+                       "headers": {"Message-ID": root}})
+    api.post("/send", {"from": "bob", "to": to, "subject": f"Re: Trip {unique}", "text": "second: a reply",
+                       "headers": {"Message-ID": first, "In-Reply-To": root, "References": root}})
+    api.post("/send", {"from": "alice", "to": to, "subject": f"Re: Trip {unique}", "text": "third: reply to the reply",
+                       "headers": {"In-Reply-To": first, "References": f"{root} {first}"}})
+    api.post("/wait", {"user": to, "text_contains": "third: reply to the reply", "timeout": 30})
 
-    ui.click('[data-testid="threads-toggle"]')
+
+def test_threads_group_and_ungroup(ui, api, unique):
+    """Conversations are the default; the Threads pill flattens and the choice is remembered."""
+    _conversation(api, unique)
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "dave@tahidromos.test")
+    expect(ui.locator('[data-testid="threads-toggle"]')).to_have_class(re.compile(r"\bon\b"))
     assert ui.locator('[data-testid="thread-group"]').count() > 0
     expect(ui.locator('[data-testid="thread-header"]').first).to_contain_text("message")
 
     ui.click('[data-testid="threads-toggle"]')
     expect(ui.locator('[data-testid="thread-group"]')).to_have_count(0)
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "dave@tahidromos.test")
+    expect(ui.locator('[data-testid="thread-group"]')).to_have_count(0)      # remembered
+
+    ui.click('[data-testid="threads-toggle"]')
+    expect(ui.locator('[data-testid="thread-group"]').first).to_be_visible()
+
+
+def test_replies_sit_under_their_first_email_oldest_first(ui, api, unique):
+    _conversation(api, unique)
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "dave@tahidromos.test")
+    group = ui.locator('[data-testid="thread-group"]', has_text=f"Trip {unique}")
+    expect(group).to_have_attribute("data-count", "3")
+    rows = group.locator('[data-testid="message-row"]')
+    expect(rows).to_have_count(3)
+    snippets = [rows.nth(i).locator('[data-testid="message-snippet"]').inner_text() for i in range(3)]
+    assert [s.split(":")[0] for s in snippets] == ["first", "second", "third"], snippets
+    assert rows.nth(0).get_attribute("data-level") is None          # the first email is not indented
+    assert rows.nth(1).get_attribute("data-level") == "1"
+    assert rows.nth(2).get_attribute("data-level") == "2"           # a reply to the reply nests deeper
+
+    group.locator('[data-testid="thread-header"]').click()          # fold the replies away
+    expect(rows.nth(1)).to_be_hidden()
+    expect(rows.nth(0)).to_be_visible()
+    group.locator('[data-testid="thread-header"]').click()
+    expect(rows.nth(1)).to_be_visible()
+
+
+def test_an_open_message_shows_the_whole_conversation_top_down(ui, api, unique):
+    _conversation(api, unique)
+    ui.reload(wait_until="networkidle")
+    select_mailbox(ui, "dave@tahidromos.test")
+    group = ui.locator('[data-testid="thread-group"]', has_text=f"Trip {unique}")
+    group.locator('[data-testid="message-row"]').nth(1).click()
+
+    items = ui.locator('[data-testid="conversation-item"]')
+    expect(items).to_have_count(3)
+    texts = [items.nth(i).inner_text() for i in range(3)]
+    assert "first" in texts[0] and "second" in texts[1] and "third" in texts[2], texts
+    expect(items.nth(1)).to_have_attribute("data-current", "true")
+
+    items.nth(2).click()                                            # jump along the conversation
+    expect(ui.locator('[data-testid="conversation-item"]').nth(2)).to_have_attribute("data-current", "true")
+
+
+def test_the_help_dialog_explains_the_place(ui):
+    ui.click('[data-testid="help-button"]')
+    dialog = ui.locator('[data-testid="help-dialog"]')
+    expect(dialog).to_be_visible()
+    for phrase in ("Apps and mailboxes", "collapse", "captured", "Conversations", "Clear all", "/wait"):
+        expect(dialog).to_contain_text(phrase)
+    ui.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
+    ui.click('[data-testid="help-button"]')
+    ui.click('[data-testid="help-close"]')
+    expect(dialog).to_be_hidden()
 
 
 # ---------------------------------------------------------------- writing
@@ -581,3 +652,55 @@ def test_an_armed_clear_all_disarms_on_its_own(ui):
     button.click()
     expect(button).to_have_text("Clear all?")
     expect(button).not_to_have_text("Clear all?", timeout=6000)
+
+
+# ---------------------------------------------------------------- the URL is the view
+
+
+def test_the_url_follows_what_you_look_at(ui):
+    select_mailbox(ui, "alice@tahidromos.test")
+    assert "user=alice%40tahidromos.test" in ui.url and "app=" in ui.url
+    open_message(ui, "receipt")
+    assert "uid=" in ui.url and "view=html" in ui.url
+    ui.click('[data-testid="view-raw"]')
+    assert "view=raw" in ui.url
+    ui.click('[data-testid="folder-archive"]')
+    assert "folder=Archive" in ui.url and "uid=" not in ui.url
+
+
+def test_a_pasted_link_reopens_the_same_message_and_view(ui, page, server):
+    select_mailbox(ui, "alice@tahidromos.test")
+    open_message(ui, "receipt")
+    uid = ui.locator('[data-testid="reader-body"]').get_attribute("data-uid")
+    headline = ui.locator('[data-testid="message-headline"]').inner_text()
+    ui.click('[data-testid="view-text"]')
+    link = ui.url
+
+    fresh = page.context.new_page()
+    fresh.goto(link, wait_until="networkidle")
+    expect(fresh.locator('[data-testid="message-headline"]')).to_have_text(headline)
+    expect(fresh.locator('[data-testid="reader-body"]')).to_have_attribute("data-uid", uid)
+    expect(fresh.locator('[data-testid="view-text"]')).to_have_class(re.compile(r"\bon\b"))
+    expect(fresh.locator('[data-testid="list-subtitle"]')).to_have_text("alice@tahidromos.test")
+    fresh.close()
+
+
+def test_a_link_to_an_archived_message_opens_it_in_the_archive(ui, api, unique, page):
+    subject = f"link archive {unique}"
+    api.post("/send", {"from": "alice", "to": "dave", "subject": subject, "text": "x"})
+    found = api.post("/wait", {"user": "dave", "subject_contains": subject, "timeout": 30}).json()
+    moved = api.post(f"/messages/dave@tahidromos.test/{found['uid']}/move", {"to": "Archive"}).json()
+
+    fresh = page.context.new_page()
+    fresh.goto(f"{ui.url.split('?')[0]}?user=dave%40tahidromos.test&folder=Archive&uid={moved['uid']}",
+               wait_until="networkidle")
+    expect(fresh.locator('[data-testid="message-headline"]')).to_have_text(subject)
+    expect(fresh.locator('[data-testid="folder-archive"]')).to_have_class(re.compile(r"\bon\b"))
+    fresh.close()
+
+
+def test_an_app_link_opens_its_first_mailbox(ui, page):
+    fresh = page.context.new_page()
+    fresh.goto(f"{ui.url.split('?')[0]}?app=tahidromos", wait_until="networkidle")
+    expect(fresh.locator('[data-testid="list-subtitle"]')).to_contain_text("@tahidromos.test")
+    fresh.close()
