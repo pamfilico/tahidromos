@@ -648,10 +648,14 @@ async function loadMessages({quiet = false} = {}){
   }
 }
 
-function messageRow(message, {level = 0} = {}){
+function messageRow(message, {level = 0, orphanHead = false} = {}){
   const chips = [];
-  if(message.in_reply_to) chips.push('<span class="chip thread" data-testid="chip-reply">↩ reply</span>');
-  if(message.depth) chips.push(`<span class="chip" data-testid="chip-depth" data-depth="${message.depth}">depth ${message.depth}</span>`);
+  // The first email of a conversation that is not in this mailbox (deleted, or sent before the
+  // inbox existed): the earliest reply we do have heads the conversation as its main email.
+  if(orphanHead) chips.push('<span class="chip" data-testid="chip-orphan" title="This conversation started with ' +
+    `${esc(message.thread_root || message.in_reply_to)}, which is not in this mailbox">first here</span>`);
+  else if(message.in_reply_to) chips.push('<span class="chip thread" data-testid="chip-reply">↩ reply</span>');
+  if(message.depth && !orphanHead) chips.push(`<span class="chip" data-testid="chip-depth" data-depth="${message.depth}">depth ${message.depth}</span>`);
   if(message.cc?.length) chips.push(`<span class="chip">cc ${message.cc.length}</span>`);
   if(message.envelope_to && !message.to.includes(message.envelope_to))
     chips.push(`<span class="chip warn">for ${esc(message.envelope_to)}</span>`);
@@ -698,13 +702,15 @@ function renderMessages(){
     }).sort((a, b) => b.latest - a.latest);
 
     $("msgs").innerHTML = blocks.map(({key, ordered}) => {
-      if(ordered.length === 1) return messageRow(ordered[0]);
+      const orphanHead = Boolean(ordered[0].in_reply_to);
+      if(ordered.length === 1) return messageRow(ordered[0], {orphanHead});
       const base = Math.min(...ordered.map(m => m.depth || 0));
       const rows = ordered.map((m, index) => messageRow(m, {
+        orphanHead: index === 0 && orphanHead,
         level: index === 0 ? 0 : Math.max(1, Math.min(3, (m.depth || 0) - base)) })).join("");
       const unread = ordered.filter(m => !m.seen).length;
       return `<div class="thread-group ${state.folded.has(key) ? "collapsed" : ""}" data-testid="thread-group"
-                   data-thread="${esc(key)}" data-count="${ordered.length}">
+                   data-thread="${esc(key)}" data-count="${ordered.length}" data-root-present="${!orphanHead}">
         <button class="thread-head" data-testid="thread-header" title="Fold or unfold the replies">
           <span class="caret">▾</span>
           <span class="t-subject">${esc(ordered[0].subject || "(no subject)")}</span>

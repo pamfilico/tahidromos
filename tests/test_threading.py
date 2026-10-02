@@ -93,3 +93,23 @@ def test_three_way_conversation(alice, bob, carol, unique):
 
     assert str(carol_reply["In-Reply-To"]).strip() == first_id.strip()
     assert f"carol@{DOMAIN}" in str(carol_reply["From"])
+
+
+def test_thread_without_its_first_email_is_headed_by_the_earliest_reply():
+    from tahidromos.message import summarize_thread
+    root = "<gone@example.test>"
+    replies = [
+        {"uid": "8", "message_id": "<b@x>", "in_reply_to": root, "thread_root": root,
+         "internal_date": "2026-10-02T10:00:00", "subject": "Re: hi", "from": "a@x.test", "to": []},
+        {"uid": "7", "message_id": "<a@x>", "in_reply_to": root, "thread_root": root,
+         "internal_date": "2026-10-02T09:00:00", "subject": "Re: hi", "from": "a@x.test", "to": []},
+    ]
+    [thread] = summarize_thread(replies)
+    assert thread["root_present"] is False
+    assert [m["uid"] for m in thread["messages"]] == ["7", "8"]
+
+    [whole] = summarize_thread(replies + [{"uid": "1", "message_id": root, "in_reply_to": None,
+                                           "thread_root": root, "internal_date": "2026-10-01",
+                                           "subject": "hi", "from": "b@x.test", "to": []}])
+    assert whole["root_present"] is True
+    assert whole["messages"][0]["uid"] == "1"

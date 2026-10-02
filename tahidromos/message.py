@@ -340,5 +340,8 @@ def summarize_thread(messages: list[dict]) -> list[dict]:
     for thread in threads.values():
         thread["message_count"] = len(thread["messages"])
         thread["depth"] = max((m.get("depth", 0) for m in thread["messages"]), default=0)
+        # The first email may be gone (deleted, or sent before this inbox existed): then the
+        # earliest message we hold heads the conversation and the rest are its replies.
+        thread["root_present"] = not thread["messages"][0].get("in_reply_to")
     return sorted(threads.values(),
                   key=lambda t: t["messages"][-1].get("internal_date") or "", reverse=True)
