@@ -79,19 +79,28 @@ async def serve() -> int:
 
     # Optional: POST every delivery at your app, shaped like a provider's
     # inbound-parse webhook. Off unless INBOUND_WEBHOOK_URL is set.
-    webhook = None
-    webhook_url = os.environ.get("INBOUND_WEBHOOK_URL", "").strip()
-    if webhook_url:
-        webhook = WebhookSender(
-            url=webhook_url,
-            fmt=os.environ.get("INBOUND_WEBHOOK_FORMAT", "postmark"),
-            secret=os.environ.get("INBOUND_WEBHOOK_SECRET", ""),
-            only=os.environ.get("INBOUND_WEBHOOK_ONLY", ""),
-            timeout=float(os.environ.get("INBOUND_WEBHOOK_TIMEOUT", "10")),
-            retries=number("INBOUND_WEBHOOK_RETRIES", "3"),
+    #
+    # Several apps can each get their own: INBOUND_WEBHOOK_URL_2 (with _FORMAT_2,
+    # _SECRET_2, _ONLY_2 …) up to _9. Each filters with its own ONLY pattern, so
+    # one devmail serves rentfast's chat replies and communication's at once.
+    webhooks: list[WebhookSender] = []
+    for suffix in [""] + [f"_{n}" for n in range(2, 10)]:
+        url = os.environ.get(f"INBOUND_WEBHOOK_URL{suffix}", "").strip()
+        if not url:
+            continue
+        sender = WebhookSender(
+            url=url,
+            fmt=os.environ.get(f"INBOUND_WEBHOOK_FORMAT{suffix}", "postmark"),
+            secret=os.environ.get(f"INBOUND_WEBHOOK_SECRET{suffix}", ""),
+            only=os.environ.get(f"INBOUND_WEBHOOK_ONLY{suffix}", ""),
+            timeout=float(os.environ.get(f"INBOUND_WEBHOOK_TIMEOUT{suffix}", "10")),
+            retries=number(f"INBOUND_WEBHOOK_RETRIES{suffix}", "3"),
         )
+        webhooks.append(sender)
         router.listeners.append(
-            lambda raw, envelope_to, mailbox, uid: webhook.deliver(raw, envelope_to, mailbox))
+            lambda raw, envelope_to, mailbox, uid, sender=sender: sender.deliver(raw, envelope_to, mailbox))
+    # The API's /webhook status reports the first one (the original, single-webhook contract).
+    webhook = webhooks[0] if webhooks else None
 
     host = os.environ.get("BIND_HOST", "0.0.0.0")
     tls_context = None
@@ -149,8 +158,9 @@ async def serve() -> int:
     log.info("mailboxes    %d", len(store.accounts()))
     log.info("auto-reply   %s", ", ".join(responder.addresses()) or "(none)")
     log.info("capture      %s", config.capture_address)
-    if webhook is not None:
-        log.info("inbound hook %s (%s)", webhook.url, webhook.fmt)
+    for sender in webhooks:
+        log.info("inbound hook %s (%s) only=%s", sender.url, sender.fmt,
+                 sender.only.pattern if sender.only else "*")
     log.info("spam engine  %s", rspamd.url if rspamd else "built-in heuristics")
     log.info("http         http://localhost:%s", http_port)
     if config.sources:

@@ -492,6 +492,7 @@ docker compose up -d
 | `INBOUND_WEBHOOK_FORMAT` | `postmark` · `sendgrid` · `mailgun` · `raw` |
 | `INBOUND_WEBHOOK_ONLY` | Regex — only POST for matching recipients |
 | `INBOUND_WEBHOOK_SECRET` | Sent as `X-Tahidromos-Signature` |
+| `INBOUND_WEBHOOK_URL_2` … `_9` | More webhooks, each with its own `_FORMAT_n`, `_ONLY_n`, `_SECRET_n` — one devmail, several apps |
 
 The Postmark shape includes `MailboxHash` (so `support+ticket42@` gives you
 `ticket42`) and `StrippedTextReply`; Mailgun gets `stripped-text`. Failed
